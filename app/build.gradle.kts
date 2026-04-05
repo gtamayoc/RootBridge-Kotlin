@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.gtc.rootbridgekotlin"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.gtc.rootbridgekotlin"
@@ -56,4 +56,13 @@ dependencies {
     androidTestImplementation(libs.androidx.ui.test.junit4)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
+
+    // Coroutines
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+    // Lifecycle para Service
+    implementation("androidx.lifecycle:lifecycle-service:2.8.7")
+    // Google Fonts en Compose
+    implementation("androidx.compose.ui:ui-text-google-fonts:1.7.5")
+    // Accompanist Permissions
+    implementation("com.google.accompanist:accompanist-permissions:0.36.0")
 }
