@@ -8,88 +8,106 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+
+// ────────────────────────────────────────────────────────────────────────────
+// State definitions
+// ────────────────────────────────────────────────────────────────────────────
 
 sealed class ScanState {
     data object Idle : ScanState()
-    /** Active scan in progress. [regionsScanned]/[regionsTotal] shows region-level progress (0 = unknown). */
+
     data class Scanning(
-        val pid: Int = -1,
-        val value: Int = 0,
+        val pid:            Int = -1,
+        val value:          Int = 0,
         val regionsScanned: Int = 0,
-        val regionsTotal: Int = 0
+        val regionsTotal:   Int = 0
     ) : ScanState()
-    data class Results(val results: List<ScanResult>) : ScanState()
+
+    /**
+     * @param results       Display slice (≤ DISPLAY_LIMIT) shown in the UI.
+     * @param totalResults  TRUE total count of matching addresses (kept by C++ in session file).
+     */
+    data class Results(
+        val results:       List<ScanResult>,
+        val totalResults:  Int,
+        val dataType:      DataType = DataType.DWORD
+    ) : ScanState()
+
     data class Error(val msg: String) : ScanState()
 }
 
 sealed class WriteState {
-    data object Idle : WriteState()
+    data object Idle    : WriteState()
     data object Writing : WriteState()
     data object Success : WriteState()
-    data class Error(val msg: String) : WriteState()
+    data class  Error(val msg: String) : WriteState()
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// ViewModel
+// ────────────────────────────────────────────────────────────────────────────
 
 class MemoryViewModel : ViewModel() {
 
     private val TAG = "MemoryViewModel"
 
-    private val _scanState = MutableStateFlow<ScanState>(ScanState.Idle)
-    val scanState: StateFlow<ScanState> = _scanState.asStateFlow()
+    /** Maximum addresses to pull from C++ session for UI display. */
+    private val DISPLAY_LIMIT = 500
+
+    private val _scanState  = MutableStateFlow<ScanState>(ScanState.Idle)
+    val scanState:  StateFlow<ScanState>  = _scanState.asStateFlow()
 
     private val _writeState = MutableStateFlow<WriteState>(WriteState.Idle)
     val writeState: StateFlow<WriteState> = _writeState.asStateFlow()
 
     /**
-     * The PID that was active when the last scan was started.
-     * This is preserved so that refine / write always operate on the same target
-     * even if the foreground app changes afterwards.
+     * PID locked at scan time. Refine/write always targets this, even if
+     * the foreground app changes afterwards.
      */
-    private val _lockedPid = MutableStateFlow(-1)
+    private val _lockedPid   = MutableStateFlow(-1)
     val lockedPid: StateFlow<Int> = _lockedPid.asStateFlow()
 
-    /** Polling job for dynamic background refreshing (Option A) */
+    /** DataType used in the current scan session (needed for refresh). */
+    private var sessionType: DataType = DataType.DWORD
+
     private var refreshJob: kotlinx.coroutines.Job? = null
 
-    // ──────────────────────────────────────────────────────────────────────────
+    // ────────────────────────────────────────────────────────────────────────
     // SCAN
-    // ──────────────────────────────────────────────────────────────────────────
+    // ────────────────────────────────────────────────────────────────────────
 
     fun scan(pid: Int, valueStr: String, type: DataType = DataType.DWORD) {
-        Log.d(TAG, "scan() — pid=$pid valueStr='$valueStr'")
-
-        val value = valueStr.trim().toIntOrNull()
-        if (value == null) {
-            Log.e(TAG, "scan() — invalid number: '$valueStr'")
+        val value = valueStr.trim().toIntOrNull() ?: run {
             _scanState.value = ScanState.Error("Invalid number: '$valueStr'")
             return
         }
 
-        // Lock the PID for this scan session
         _lockedPid.value = pid
+        sessionType      = type
         _scanState.value = ScanState.Scanning(pid = pid, value = value)
 
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                Log.i(TAG, "scan() — starting real scan: pid=$pid value=$value type=$type")
-                val results = MemoryEngine.scanValue(pid, value, type) { scanned, total ->
-                    // Emit progress update on each region completion
+                Log.i(TAG, "scan() — pid=$pid value=$value type=$type")
+
+                val total = MemoryEngine.scanValue(pid, value, type) { scanned, total ->
                     _scanState.value = ScanState.Scanning(
-                        pid = pid,
-                        value = value,
-                        regionsScanned = scanned,
-                        regionsTotal = total
+                        pid = pid, value = value,
+                        regionsScanned = scanned, regionsTotal = total
                     )
                 }
-                Log.i(TAG, "scan() — completed: ${results.size} results for pid=$pid")
 
-                if (results.isEmpty()) {
-                    _scanState.value = ScanState.Error("No matches found for value=$value in PID $pid")
-                } else {
-                    MemoryEngine.setSession(pid, results)
-                    _scanState.value = ScanState.Results(results)
-                    startRefreshJob(pid)
+                when {
+                    total < 0 -> _scanState.value = ScanState.Error("Scanner binary not available")
+                    total == 0 -> _scanState.value = ScanState.Error("No matches for value=$value in PID $pid")
+                    else -> {
+                        val displayList = MemoryEngine.fetchResults(pid, type, DISPLAY_LIMIT)
+                        Log.i(TAG, "scan() — total=$total displaying=${displayList.size}")
+                        _scanState.value = ScanState.Results(displayList, total, type)
+                        startRefreshJob(pid, type)
+                    }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "scan() — exception: ${e.message}", e)
@@ -98,116 +116,146 @@ class MemoryViewModel : ViewModel() {
         }
     }
 
-    // ──────────────────────────────────────────────────────────────────────────
-    // REFINE
-    // ──────────────────────────────────────────────────────────────────────────
+    // ────────────────────────────────────────────────────────────────────────
+    // REFINE — Exact value match filter
+    // ────────────────────────────────────────────────────────────────────────
 
-    fun refine(pid: Int, newValue: Int) {
-        val currentState = _scanState.value
-        if (currentState !is ScanState.Results) {
-            Log.w(TAG, "refine() — called but state is not Results, ignoring")
-            return
-        }
+    fun refineExact(newValue: Int) {
+        val state = _scanState.value as? ScanState.Results ?: return
+        val pid   = _lockedPid.value.takeIf { it > 0 } ?: return
 
-        // Always use the locked PID from the original scan, not the current foreground PID
-        val targetPid = if (_lockedPid.value > 0) _lockedPid.value else pid
-        Log.d(TAG, "refine() — targetPid=$targetPid newValue=$newValue")
-        _scanState.value = ScanState.Scanning(pid = targetPid, value = newValue)
+        _scanState.value = ScanState.Scanning(pid = pid, value = newValue)
 
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                // Read from our Session Engine cache if possible to ensure we search exactly what we found.
-                val sessionResults = MemoryEngine.getSession(targetPid) ?: currentState.results
-                
-                val newResults = MemoryEngine.filterResults(targetPid, sessionResults, newValue)
-                Log.i(TAG, "refine() — ${newResults.size} addresses still match $newValue")
-                
-                if (newResults.isEmpty()) {
-                    _scanState.value = ScanState.Error("No addresses match $newValue after refinement")
-                } else {
-                    MemoryEngine.setSession(targetPid, newResults)
-                    _scanState.value = ScanState.Results(newResults)
-                    startRefreshJob(targetPid)
-                }
+                val total = MemoryEngine.filterExact(pid, newValue, state.dataType)
+                handleFilterResult(total, pid, state.dataType, "refineExact($newValue)")
             } catch (e: Exception) {
-                Log.e(TAG, "refine() — exception: ${e.message}", e)
+                Log.e(TAG, "refineExact — ${e.message}", e)
                 _scanState.value = ScanState.Error(e.message ?: "Refine error")
             }
         }
     }
 
-    // ──────────────────────────────────────────────────────────────────────────
-    // WRITE
-    // ──────────────────────────────────────────────────────────────────────────
+    // ────────────────────────────────────────────────────────────────────────
+    // FILTER CHANGED — Keep only addresses whose value changed from initial scan
+    // ────────────────────────────────────────────────────────────────────────
 
-    fun writeValue(pid: Int, address: Long, value: Int, type: DataType = DataType.DWORD) {
-        // Always prefer the locked PID from the original scan
-        val targetPid = if (_lockedPid.value > 0) _lockedPid.value else pid
-        Log.d(TAG, "writeValue() — targetPid=$targetPid addr=0x${address.toString(16)} value=$value")
+    fun refineChanged() {
+        val state = _scanState.value as? ScanState.Results ?: return
+        val pid   = _lockedPid.value.takeIf { it > 0 } ?: return
 
-        _writeState.value = WriteState.Writing
+        _scanState.value = ScanState.Scanning(pid = pid, value = 0)
+
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val success = MemoryEngine.writeValue(targetPid, address, value, type)
-                if (success) {
-                    Log.i(TAG, "writeValue() — SUCCESS at 0x${address.toString(16)}")
-                    _writeState.value = WriteState.Success
+                val total = MemoryEngine.filterChanged(pid)
+                handleFilterResult(total, pid, state.dataType, "refineChanged")
+            } catch (e: Exception) {
+                Log.e(TAG, "refineChanged — ${e.message}", e)
+                _scanState.value = ScanState.Error(e.message ?: "Filter error")
+            }
+        }
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // FILTER UNCHANGED — Keep only addresses whose value stayed the same
+    // ────────────────────────────────────────────────────────────────────────
+
+    fun refineUnchanged() {
+        val state = _scanState.value as? ScanState.Results ?: return
+        val pid   = _lockedPid.value.takeIf { it > 0 } ?: return
+
+        _scanState.value = ScanState.Scanning(pid = pid, value = 0)
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val total = MemoryEngine.filterUnchanged(pid)
+                handleFilterResult(total, pid, state.dataType, "refineUnchanged")
+            } catch (e: Exception) {
+                Log.e(TAG, "refineUnchanged — ${e.message}", e)
+                _scanState.value = ScanState.Error(e.message ?: "Filter error")
+            }
+        }
+    }
+
+    // Shared post-filter logic
+    private suspend fun handleFilterResult(
+        total:    Int,
+        pid:      Int,
+        type:     DataType,
+        label:    String
+    ) {
+        when {
+            total < 0 -> _scanState.value = ScanState.Error("Filter failed")
+            total == 0 -> _scanState.value = ScanState.Error("No addresses remained after $label")
+            else -> {
+                val displayList = MemoryEngine.fetchResults(pid, type, DISPLAY_LIMIT)
+                Log.i(TAG, "$label — total=$total displaying=${displayList.size}")
+                _scanState.value = ScanState.Results(displayList, total, type)
+                startRefreshJob(pid, type)
+            }
+        }
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // WRITE
+    // ────────────────────────────────────────────────────────────────────────
+
+    fun writeValue(pid: Int, address: Long, value: Int, type: DataType = DataType.DWORD) {
+        val targetPid = _lockedPid.value.takeIf { it > 0 } ?: pid
+        _writeState.value = WriteState.Writing
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val ok = MemoryEngine.writeValue(targetPid, address, value, type)
+                _writeState.value = if (ok) WriteState.Success else WriteState.Error("Write failed")
+                if (ok) {
                     kotlinx.coroutines.delay(2000)
                     _writeState.value = WriteState.Idle
-                } else {
-                    Log.e(TAG, "writeValue() — FAILED at 0x${address.toString(16)}")
-                    _writeState.value = WriteState.Error("dd/python write failed at 0x${address.toString(16)}")
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "writeValue() — exception: ${e.message}", e)
+                Log.e(TAG, "writeValue — ${e.message}", e)
                 _writeState.value = WriteState.Error(e.message ?: "Write error")
             }
         }
     }
 
-    // ──────────────────────────────────────────────────────────────────────────
+    // ────────────────────────────────────────────────────────────────────────
     // RESET
-    // ──────────────────────────────────────────────────────────────────────────
+    // ────────────────────────────────────────────────────────────────────────
 
     fun reset() {
-        Log.d(TAG, "reset() — clearing scan and write state")
         refreshJob?.cancel()
-        if (_lockedPid.value > 0) {
-            MemoryEngine.clearSession(_lockedPid.value)
+        viewModelScope.launch(Dispatchers.IO) {
+            MemoryEngine.clearSession()
         }
-        _scanState.value = ScanState.Idle
+        _scanState.value  = ScanState.Idle
         _writeState.value = WriteState.Idle
-        _lockedPid.value = -1
+        _lockedPid.value  = -1
     }
 
-    // ──────────────────────────────────────────────────────────────────────────
-    // REFRESH JOB
-    // ──────────────────────────────────────────────────────────────────────────
+    // ────────────────────────────────────────────────────────────────────────
+    // BACKGROUND REFRESH JOB  (live-updates the visible 25 entries)
+    // ────────────────────────────────────────────────────────────────────────
 
-    private fun startRefreshJob(pid: Int) {
+    private fun startRefreshJob(pid: Int, type: DataType) {
         refreshJob?.cancel()
         if (pid <= 0) return
 
         refreshJob = viewModelScope.launch(Dispatchers.IO) {
             while (isActive) {
-                // Wait 2 seconds between updates to avoid high CPU usage
                 kotlinx.coroutines.delay(2000L)
 
-                val state = _scanState.value
-                if (state !is ScanState.Results) continue
+                val state = _scanState.value as? ScanState.Results ?: continue
+                if (state.results.isEmpty()) continue
 
-                val currentResults = state.results
-                if (currentResults.isEmpty()) continue
+                // Only refresh the visible portion to save root-shell bandwidth
+                val topSlice    = state.results.take(25)
+                val refreshed   = MemoryEngine.refreshAddresses(pid, topSlice)
+                val merged      = refreshed + state.results.drop(25)
 
-                // To minimize root shell overhead, we only refresh the first 25 (most likely visible).
-                // Or max 25 elements.
-                val topResults = currentResults.take(25)
-                val refreshedTop = MemoryEngine.refreshAddresses(pid, topResults)
-
-                // Re-merge with the rest
-                val merged = refreshedTop + currentResults.drop(25)
-
-                _scanState.value = ScanState.Results(merged)
+                _scanState.value = state.copy(results = merged)
             }
         }
     }

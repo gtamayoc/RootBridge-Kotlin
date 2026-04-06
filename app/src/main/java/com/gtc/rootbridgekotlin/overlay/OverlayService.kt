@@ -217,7 +217,9 @@ class OverlayService : LifecycleService(), SavedStateRegistryOwner, ViewModelSto
                         onMove = { dx, dy -> updatePosition(dx, dy) },
                         onClose = { stopSelf() },
                         onScan = { pid, valueStr -> memoryViewModel.scan(pid, valueStr) },
-                        onRefine = { pid, value -> memoryViewModel.refine(pid, value) },
+                        onRefineExact = { value -> memoryViewModel.refineExact(value) },
+                        onRefineChanged = { memoryViewModel.refineChanged() },
+                        onRefineUnchanged = { memoryViewModel.refineUnchanged() },
                         onWrite = { pid, address, value -> memoryViewModel.writeValue(pid, address, value) },
                         onReset = { memoryViewModel.reset() },
                         onGetRunningApps = { ProcessScanner.getRunningApplications() },  // suspend lambda — called from LaunchedEffect

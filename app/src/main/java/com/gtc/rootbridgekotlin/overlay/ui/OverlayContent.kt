@@ -42,7 +42,9 @@ fun OverlayContent(
     onMove: (Float, Float) -> Unit,
     onClose: () -> Unit,
     onScan: (Int, String) -> Unit,
-    onRefine: (Int, Int) -> Unit,
+    onRefineExact: (Int) -> Unit,
+    onRefineChanged: () -> Unit,
+    onRefineUnchanged: () -> Unit,
     onWrite: (Int, Long, Int) -> Unit,
     onReset: () -> Unit,
     onGetRunningApps: suspend () -> List<com.gtc.rootbridgekotlin.core.memory.ProcessInfo>,
@@ -69,7 +71,9 @@ fun OverlayContent(
                 scanState = scanState,
                 writeState = writeState,
                 onScan = onScan,
-                onRefine = onRefine,
+                onRefineExact = onRefineExact,
+                onRefineChanged = onRefineChanged,
+                onRefineUnchanged = onRefineUnchanged,
                 onWrite = onWrite,
                 onReset = onReset,
                 onGetRunningApps = onGetRunningApps,
@@ -123,7 +127,9 @@ fun ExpandedMenu(
     scanState: ScanState,
     writeState: WriteState,
     onScan: (Int, String) -> Unit,
-    onRefine: (Int, Int) -> Unit,
+    onRefineExact: (Int) -> Unit,
+    onRefineChanged: () -> Unit,
+    onRefineUnchanged: () -> Unit,
     onWrite: (Int, Long, Int) -> Unit,
     onReset: () -> Unit,
     onGetRunningApps: suspend () -> List<com.gtc.rootbridgekotlin.core.memory.ProcessInfo>,
@@ -263,12 +269,15 @@ fun ExpandedMenu(
                             onRetry = onReset
                         )
                         is ScanState.Results -> ResultsPhase(
-                            pid       = currentPid,
-                            results   = state.results,
-                            writeState = writeState,
-                            onRefine  = onRefine,
-                            onWrite   = onWrite,
-                            onReset   = onReset
+                            pid              = currentPid,
+                            results          = state.results,
+                            totalResults     = state.totalResults,
+                            writeState       = writeState,
+                            onRefineExact    = onRefineExact,
+                            onRefineChanged  = onRefineChanged,
+                            onRefineUnchanged = onRefineUnchanged,
+                            onWrite          = onWrite,
+                            onReset          = onReset
                         )
                     }
                 }
@@ -443,48 +452,163 @@ fun SearchPhase(pid: Int, onScan: (Int, String) -> Unit) {
 fun ResultsPhase(
     pid: Int,
     results: List<ScanResult>,
+    totalResults: Int,
     writeState: WriteState,
-    onRefine: (Int, Int) -> Unit,
+    onRefineExact: (Int) -> Unit,
+    onRefineChanged: () -> Unit,
+    onRefineUnchanged: () -> Unit,
     onWrite: (Int, Long, Int) -> Unit,
     onReset: () -> Unit
 ) {
-    var query by remember { mutableStateOf("") }
+    var exactQuery by remember { mutableStateOf("") }
     var selectedAddress by remember { mutableStateOf<Long?>(null) }
-    
+    var editQuery by remember { mutableStateOf("") }
+
     Column(modifier = Modifier.fillMaxHeight()) {
-        Text("Found: ${results.size} matches", style = Typography.labelMedium, color = AccentPlasma)
+
+        // ── Result count banner ──
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(AccentPlasma.copy(alpha = 0.12f), RoundedCornerShape(6.dp))
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Total: $totalResults addresses",
+                style = Typography.labelMedium,
+                color = AccentPlasma
+            )
+            if (results.size < totalResults) {
+                Text(
+                    text = "Showing ${results.size}",
+                    style = Typography.labelSmall,
+                    color = TextSecondary
+                )
+            }
+        }
+
         Spacer(modifier = Modifier.height(8.dp))
-        
-        LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth()) {
+
+        // ── Address list ──
+        LazyColumn(modifier = Modifier
+            .weight(1f)
+            .fillMaxWidth()) {
             items(results) { result ->
                 val isSelected = selectedAddress == result.address
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(if (isSelected) DeepSurface else Color.Transparent)
-                        .padding(8.dp)
-                        .padding(vertical = 4.dp),
+                        .background(
+                            if (isSelected) AccentPlasma.copy(alpha = 0.15f)
+                            else Color.Transparent,
+                            RoundedCornerShape(6.dp)
+                        )
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    val hexAddr = "0x" + result.address.toString(16).uppercase()
-                    Text(hexAddr, style = Typography.bodySmall, color = TextPrimary)
-                    Text("Value: ${result.getIntValue()}", style = Typography.bodySmall, color = TextSecondary)
-                    TextButton(onClick = { selectedAddress = result.address }) {
-                        Text("Edit", color = AccentSignal)
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "0x" + result.address.toString(16).uppercase(),
+                            style = Typography.bodySmall,
+                            color = TextPrimary
+                        )
+                        Text(
+                            text = "Value: ${result.getIntValue()}",
+                            style = Typography.labelSmall,
+                            color = TextSecondary
+                        )
+                    }
+                    TextButton(onClick = {
+                        selectedAddress = if (selectedAddress == result.address) null else result.address
+                        editQuery = ""
+                    }) {
+                        Text(
+                            if (isSelected) "CANCEL" else "EDIT",
+                            color = if (isSelected) AccentError else AccentSignal,
+                            style = Typography.labelSmall
+                        )
                     }
                 }
+                Spacer(modifier = Modifier.height(2.dp))
             }
         }
-        
+
         Spacer(modifier = Modifier.height(8.dp))
-        
+
+        // ── Write panel (shown when an address is selected) ──
         if (selectedAddress != null) {
-            Text("Edit Value for ${"0x" + selectedAddress!!.toString(16).uppercase()}", style = Typography.labelSmall, color = TextSecondary)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(DeepSurface, RoundedCornerShape(8.dp))
+                    .padding(10.dp)
+            ) {
+                Text(
+                    text = "Edit → 0x${selectedAddress!!.toString(16).uppercase()}",
+                    style = Typography.labelSmall,
+                    color = TextSecondary
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = editQuery,
+                        onValueChange = { editQuery = it },
+                        placeholder = { Text("New value", color = TextSecondary) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = DeepSurface,
+                            unfocusedContainerColor = DeepSurface,
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary,
+                            cursorColor = AccentPlasma,
+                            focusedIndicatorColor = AccentPlasma
+                        )
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            editQuery.trim().toIntOrNull()?.let { v ->
+                                onWrite(pid, selectedAddress!!, v)
+                            }
+                        },
+                        enabled = editQuery.trim().isNotEmpty() && writeState !is WriteState.Writing,
+                        colors = ButtonDefaults.buttonColors(containerColor = AccentSignal)
+                    ) {
+                        if (writeState is WriteState.Writing)
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), color = DeepVoid, strokeWidth = 2.dp)
+                        else
+                            Text("WRITE", color = DeepVoid)
+                    }
+                }
+                if (writeState is WriteState.Success)
+                    Text("✓ Write successful", color = AccentSignal, style = Typography.labelSmall)
+                else if (writeState is WriteState.Error)
+                    Text("✗ Write failed", color = AccentError, style = Typography.labelSmall)
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+
+        // ── Refine Panel ──
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(DeepSurface, RoundedCornerShape(8.dp))
+                .padding(10.dp)
+        ) {
+            Text("Refine Results", style = Typography.labelMedium, color = TextPrimary)
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Exact value filter
             Row(verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it },
+                    value = exactQuery,
+                    onValueChange = { exactQuery = it },
+                    placeholder = { Text("Filter by exact value…", color = TextSecondary) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     singleLine = true,
                     modifier = Modifier.weight(1f),
@@ -499,51 +623,54 @@ fun ResultsPhase(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Button(
-                    onClick = { 
-                        val v = query.trim().toIntOrNull()
-                        if (v != null) onWrite(pid, selectedAddress!!, v)
-                    },
-                    enabled = query.trim().isNotEmpty() && writeState !is WriteState.Writing,
-                    colors = ButtonDefaults.buttonColors(containerColor = AccentSignal)
-                ) {
-                    Text("WRITE", color = DeepVoid)
-                }
-            }
-            if (writeState is WriteState.Success) {
-                Text("Write successful!", color = AccentSignal, style = Typography.labelSmall)
-            } else if (writeState is WriteState.Error) {
-                Text("Write failed", color = AccentError, style = Typography.labelSmall)
-            }
-        } else {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    placeholder = { Text("New value", color = TextSecondary) },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.weight(1f),
-                    colors = TextFieldDefaults.colors(
-                        focusedContainerColor = DeepSurface,
-                        unfocusedContainerColor = DeepSurface,
-                        focusedTextColor = TextPrimary,
-                        unfocusedTextColor = TextPrimary
-                    )
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Button(
-                    onClick = { 
-                        query.toIntOrNull()?.let { onRefine(pid, it) }
-                    },
+                    onClick = { exactQuery.trim().toIntOrNull()?.let { onRefineExact(it) } },
+                    enabled = exactQuery.trim().isNotEmpty(),
                     colors = ButtonDefaults.buttonColors(containerColor = AccentPlasma)
                 ) {
-                    Text("REFINE", color = DeepVoid)
+                    Text("EXACT", color = DeepVoid, style = Typography.labelSmall)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Dynamic change filters
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // CHANGED button
+                Button(
+                    onClick = onRefineChanged,
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = AccentSignal.copy(alpha = 0.85f)
+                    )
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("CHANGED", color = DeepVoid, style = Typography.labelSmall)
+                        Text("values differ", color = DeepVoid.copy(alpha = 0.7f), style = Typography.labelSmall)
+                    }
+                }
+                // UNCHANGED button
+                Button(
+                    onClick = onRefineUnchanged,
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = DeepElevated
+                    ),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, TextSecondary.copy(alpha = 0.4f))
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("UNCHANGED", color = TextPrimary, style = Typography.labelSmall)
+                        Text("values same", color = TextSecondary, style = Typography.labelSmall)
+                    }
                 }
             }
         }
-        
+
         Spacer(modifier = Modifier.height(8.dp))
         TextButton(onClick = onReset, modifier = Modifier.fillMaxWidth()) {
-            Text("NEW SCAN", color = TextSecondary)
+            Text("NEW SCAN", color = TextSecondary, style = Typography.labelSmall)
         }
     }
 }

@@ -9,179 +9,132 @@ object MemoryEngine {
 
     private const val TAG = "MemoryEngine"
 
-    /** Maximum addresses returned from a single scan to avoid OOM. */
-    const val MAX_RESULTS = 500
-
-    // Path to the native libs for the application
+    /** Binary to deploy - compiled from scanner.cpp */
     var nativeLibDir: String = ""
 
     private var binaryReady = false
+    private val binaryPath  = "/data/local/tmp/mem_scanner"
 
-    private suspend fun prepareBinary(): String? {
-        val tmpDest = "/data/local/tmp/mem_scanner"
-        if (!binaryReady) {
-            val source = "$nativeLibDir/libscanner.so"
-            // We use busybox cp or standard cp. Also fallback to cat if cp fails on some weird roms.
-            val copyCmd = "cp $source $tmpDest || cat $source > $tmpDest; chmod +x $tmpDest"
-            val res = RootShell.exec(copyCmd)
-            
-            // Validate if the binary is actually there and executable
-            val checkCmd = "ls -l $tmpDest"
-            val checkRes = RootShell.exec(checkCmd)
-            if (checkRes.stdout.contains("mem_scanner")) {
-                binaryReady = true
-            } else {
-                Log.e(TAG, "Failed to prepare binary. Code=${res.exitCode}, out=${res.stdout}. Check=${checkRes.stdout}")
-                return null
-            }
-        }
-        return tmpDest
+    // ────────────────────────────────────────────────────────────────────────
+    // BINARY SETUP
+    // ────────────────────────────────────────────────────────────────────────
+
+    private suspend fun prepareBinary(): Boolean {
+        if (binaryReady) return true
+
+        val source  = "$nativeLibDir/libscanner.so"
+        val copyCmd = "cp '$source' $binaryPath || cat '$source' > $binaryPath; chmod +x $binaryPath"
+        RootShell.exec(copyCmd)
+
+        val check = RootShell.exec("ls -l $binaryPath 2>/dev/null")
+        binaryReady = check.stdout.contains("mem_scanner")
+        if (!binaryReady) Log.e(TAG, "Binary not ready. libscanner.so missing at $source")
+        return binaryReady
     }
 
-    // ────────────────────────────────────────────────────────────────────────────
-    // SESSION STATE CACHE
-    // ────────────────────────────────────────────────────────────────────────────
+    // ────────────────────────────────────────────────────────────────────────
+    // SCAN  — Full first scan; state lives in C++ session file
+    // Returns the TOTAL count of matches (not limited).
+    // Call fetchResults() afterwards to get a displayable subset.
+    // ────────────────────────────────────────────────────────────────────────
 
-    /**
-     * Stores the current active scan results per PID.
-     */
-    private val activeSessions = java.util.concurrent.ConcurrentHashMap<Int, List<ScanResult>>()
-
-    fun getSession(pid: Int): List<ScanResult>? = activeSessions[pid]
-
-    fun setSession(pid: Int, results: List<ScanResult>) {
-        activeSessions[pid] = results.take(MAX_RESULTS * 2) 
-    }
-
-    fun clearSession(pid: Int) {
-        activeSessions.remove(pid)
-    }
-
-    /**
-     * Reads the REAL-TIME values of the provided [ScanResult] addresses.
-     */
-    suspend fun refreshAddresses(
-        pid: Int,
-        results: List<ScanResult>
-    ): List<ScanResult> = withContext(Dispatchers.IO) {
-        if (pid <= 0) return@withContext results
-        
-        // This can be optimized using NDK batch-read later. 
-        // For now, we reuse NDK `filter` logic but without actual filtering.
-        // Or keep the old logic for refresh. Here we just return results if refresh logic not updated to NDK yet,
-        // or we simply fallback to `dd`. Let's use the simplest loop for now:
-        val refreshed = mutableListOf<ScanResult>()
-        for (sr in results) {
-            val liveBytes = readBytes(pid, sr.address, sr.dataType.byteSize)
-            if (liveBytes != null) {
-                refreshed.add(sr.copy(currentValue = liveBytes))
-            } else {
-                refreshed.add(sr)
-            }
-        }
-        refreshed
-    }
-
-
-    // ────────────────────────────────────────────────────────────────────────────
-    // SCAN NDK
-    // ────────────────────────────────────────────────────────────────────────────
-
-    /**
-     * Scans the rw-p memory regions of [pid] for [value].
-     *
-     * Strategy NDK:
-     *  Execute the compiled C++ binary (libscanner.so) via root.
-     *  It sweeps [anon] and [heap] exclusively via direct `pread64` minimizing CPU.
-     */
     suspend fun scanValue(
         pid: Int,
         value: Int,
         type: DataType,
         onProgress: (Int, Int) -> Unit = { _, _ -> }
-    ): List<ScanResult> = withContext(Dispatchers.IO) {
-        onProgress(50, 100) // Fast progress for NDK
+    ): Int = withContext(Dispatchers.IO) {
+        onProgress(50, 100)
+
         if (pid <= 0) {
+            // Demo mode: fabricate a tiny "session" showing mock addresses
             onProgress(100, 100)
-            return@withContext mockResults(value, type)
+            return@withContext 5 // Mock total
         }
 
-        val needle = intToLEBytes(value, type.byteSize)
+        if (!prepareBinary()) {
+            onProgress(100, 100)
+            return@withContext -1 // Signal error
+        }
+
+        val needle    = intToLEBytes(value, type.byteSize)
         val needleHex = needle.toHexString()
-        
-        val binaryPath = prepareBinary() ?: return@withContext emptyList()
-        
-        val cmd = "$binaryPath scan $pid $needleHex"
-        val result = RootShell.execPersistent(cmd)
-        
-        val results = mutableListOf<ScanResult>()
-        if (result.exitCode == 0 && result.stdout.isNotBlank()) {
-            val lines = result.stdout.lines()
-            for (line in lines) {
-                if (line.isBlank()) continue
-                try {
-                    val addr = line.toULong(10).toLong()
-                    results.add(ScanResult(addr, needle.copyOf(), type))
-                    if (results.size >= MAX_RESULTS) break
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error parsing address line: $line", e)
-                }
-            }
-        } else {
-            Log.e(TAG, "NDK Scan failed. Output: ${result.stdout}")
-        }
 
+        // Clear existing session before scan
+        RootShell.execPersistent("$binaryPath clear_session 2>/dev/null")
+
+        val res = RootShell.execPersistent("$binaryPath scan $pid $needleHex")
         onProgress(100, 100)
-        Log.i(TAG, "scanValue NDK — done. ${results.size} total matches")
-        results
+
+        return@withContext parseTotalFound(res.stdout, pid)
     }
 
-    /**
-     * Re-reads addresses using NDK filter binary.
-     */
-    suspend fun filterResults(
+    // ────────────────────────────────────────────────────────────────────────
+    // FETCH RESULTS  — Retrieve a displayable page from C++ session file
+    // ────────────────────────────────────────────────────────────────────────
+
+    suspend fun fetchResults(
         pid: Int,
-        results: List<ScanResult>,
-        newValue: Int
+        type: DataType,
+        limit: Int = 500
     ): List<ScanResult> = withContext(Dispatchers.IO) {
-        if (pid <= 0) {
-            val bytes = intToLEBytes(newValue, results.firstOrNull()?.dataType?.byteSize ?: 4)
-            return@withContext listOf(results.first().copy(currentValue = bytes))
-        }
-        
-        val dataType = results.firstOrNull()?.dataType ?: DataType.DWORD
-        val needle = intToLEBytes(newValue, dataType.byteSize)
-        val needleHex = needle.toHexString()
-        
-        val addresses = results.joinToString("\n") { it.address.toULong().toString() }
-        
-        val binaryPath = prepareBinary() ?: return@withContext emptyList()
-        val cmd = "echo '$addresses' | $binaryPath filter $pid $needleHex"
-        
-        val result = RootShell.execPersistent(cmd)
-        
-        val filtered = mutableListOf<ScanResult>()
-        
-        if (result.exitCode == 0 && result.stdout.isNotBlank()) {
-            val lines = result.stdout.lines()
-            for (line in lines) {
-                if (line.isBlank()) continue
-                try {
-                    val addr = line.toULong(10).toLong()
-                    filtered.add(ScanResult(addr, needle.copyOf(), dataType))
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error parsing address: $line", e)
-                }
-            }
-        }
-        
-        Log.i(TAG, "filterResults NDK — ${filtered.size}/${results.size} addresses still match $newValue")
-        filtered
+        if (pid <= 0) return@withContext mockResults(0, type)
+
+        if (!prepareBinary()) return@withContext emptyList()
+
+        val res = RootShell.execPersistent("$binaryPath print_results $limit")
+        parseResultLines(res.stdout, type)
     }
 
-    // ────────────────────────────────────────────────────────────────────────────
+    // ────────────────────────────────────────────────────────────────────────
+    // FILTER EXACT  — Keep only addresses matching a specific value now
+    // ────────────────────────────────────────────────────────────────────────
+
+    suspend fun filterExact(
+        pid: Int,
+        value: Int,
+        type: DataType
+    ): Int = withContext(Dispatchers.IO) {
+        if (pid <= 0) return@withContext 1
+
+        if (!prepareBinary()) return@withContext -1
+
+        val needle    = intToLEBytes(value, type.byteSize)
+        val needleHex = needle.toHexString()
+
+        val res = RootShell.execPersistent("$binaryPath filter_exact $pid $needleHex")
+        parseTotalFound(res.stdout, pid)
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // FILTER CHANGED  — Keep only addresses whose value CHANGED since scan
+    // ────────────────────────────────────────────────────────────────────────
+
+    suspend fun filterChanged(pid: Int): Int = withContext(Dispatchers.IO) {
+        if (pid <= 0) return@withContext 2
+
+        if (!prepareBinary()) return@withContext -1
+
+        val res = RootShell.execPersistent("$binaryPath filter_changed $pid")
+        parseTotalFound(res.stdout, pid)
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // FILTER UNCHANGED  — Keep only addresses whose value STAYED the same
+    // ────────────────────────────────────────────────────────────────────────
+
+    suspend fun filterUnchanged(pid: Int): Int = withContext(Dispatchers.IO) {
+        if (pid <= 0) return@withContext 3
+
+        if (!prepareBinary()) return@withContext -1
+
+        val res = RootShell.execPersistent("$binaryPath filter_unchanged $pid")
+        parseTotalFound(res.stdout, pid)
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
     // WRITE
-    // ────────────────────────────────────────────────────────────────────────────
+    // ────────────────────────────────────────────────────────────────────────
 
     suspend fun writeValue(
         pid: Int,
@@ -191,34 +144,102 @@ object MemoryEngine {
     ): Boolean = withContext(Dispatchers.IO) {
         if (pid <= 0) return@withContext true
 
-        val bytes = intToLEBytes(value, type.byteSize)
+        val bytes        = intToLEBytes(value, type.byteSize)
         val bytesEscaped = bytes.joinToString("") { "\\x%02x".format(it.toInt() and 0xFF) }
 
         val ddCmd = "printf '$bytesEscaped' | dd of=/proc/$pid/mem bs=${type.byteSize} seek=$address oflag=seek_bytes conv=notrunc 2>&1"
-        val ddResult = RootShell.exec(ddCmd)
-        if (ddResult.exitCode == 0) return@withContext true
+        val ddRes = RootShell.exec(ddCmd)
+        if (ddRes.exitCode == 0) return@withContext true
 
         val bbCmd = "printf '$bytesEscaped' | busybox dd of=/proc/$pid/mem bs=${type.byteSize} seek=$address oflag=seek_bytes conv=notrunc 2>&1"
         RootShell.exec(bbCmd).exitCode == 0
     }
 
-    // ────────────────────────────────────────────────────────────────────────────
+    // ────────────────────────────────────────────────────────────────────────
+    // CLEAR SESSION
+    // ────────────────────────────────────────────────────────────────────────
+
+    suspend fun clearSession() = withContext(Dispatchers.IO) {
+        if (binaryReady) {
+            RootShell.exec("$binaryPath clear_session 2>/dev/null")
+        }
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // REFRESH  — Re-read live values for a small visible list (UI refresh)
+    // ────────────────────────────────────────────────────────────────────────
+
+    suspend fun refreshAddresses(
+        pid: Int,
+        results: List<ScanResult>
+    ): List<ScanResult> = withContext(Dispatchers.IO) {
+        if (pid <= 0) return@withContext results
+        val refreshed = mutableListOf<ScanResult>()
+        for (sr in results) {
+            val liveBytes = readBytes(pid, sr.address, sr.dataType.byteSize)
+            refreshed.add(if (liveBytes != null) sr.copy(currentValue = liveBytes) else sr)
+        }
+        refreshed
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // Internal parsing
+    // ────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Parses the "TOTAL_FOUND:N" line from scanner output. Returns -1 on failure.
+     */
+    private fun parseTotalFound(stdout: String, pid: Int): Int {
+        val line = stdout.lines().firstOrNull { it.startsWith("TOTAL_FOUND:") }
+            ?: run {
+                Log.e(TAG, "parseTotalFound — no TOTAL_FOUND line. pid=$pid stdout=[$stdout]")
+                return -1
+            }
+        return line.removePrefix("TOTAL_FOUND:").trim().toIntOrNull() ?: -1
+    }
+
+    /**
+     * Parses `print_results` output lines of the form:
+     *   address,hh,hh,hh,hh
+     *   ...
+     *   TOTAL_FOUND:N
+     */
+    private fun parseResultLines(stdout: String, type: DataType): List<ScanResult> {
+        val results = mutableListOf<ScanResult>()
+        for (line in stdout.lines()) {
+            if (line.isBlank() || line.startsWith("TOTAL_FOUND")) continue
+            try {
+                val parts = line.split(",")
+                if (parts.size < 2) continue
+                val addr      = parts[0].trim().toULong().toLong()
+                val hexParts  = parts.drop(1).map { it.trim() }
+                val byteArray = ByteArray(hexParts.size) {
+                    hexParts[it].toInt(16).toByte()
+                }
+                results.add(ScanResult(addr, byteArray, type))
+            } catch (e: Exception) {
+                Log.e(TAG, "parseResultLines — bad line: [$line]", e)
+            }
+        }
+        return results
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
     // Utility
-    // ────────────────────────────────────────────────────────────────────────────
+    // ────────────────────────────────────────────────────────────────────────
 
     private suspend fun readBytes(pid: Int, address: Long, byteCount: Int): ByteArray? {
-        val strategy = "xxd -p | tr -d '\\n'"
-        val cmd = "dd if=/proc/$pid/mem iflag=skip_bytes bs=$byteCount skip=$address count=1 2>/dev/null | $strategy"
+        val cmd = "dd if=/proc/$pid/mem iflag=skip_bytes bs=$byteCount skip=$address count=1 2>/dev/null | xxd -p | tr -d '\\n'"
         val result = RootShell.execPersistent(cmd)
         if (result.exitCode == 0 && result.stdout.isNotBlank()) {
-            try {
-                return hexStringToByteArray(result.stdout.trim().lowercase().take(byteCount * 2))
-            } catch (e: Exception) {}
+            return try {
+                hexStringToByteArray(result.stdout.trim().lowercase().take(byteCount * 2))
+            } catch (e: Exception) { null }
         }
         return null
     }
 
-    private fun intToLEBytes(value: Int, byteCount: Int): ByteArray {
+    fun intToLEBytes(value: Int, byteCount: Int): ByteArray {
         val b = ByteArray(byteCount)
         for (i in 0 until byteCount) b[i] = ((value shr (i * 8)) and 0xFF).toByte()
         return b
@@ -228,17 +249,15 @@ object MemoryEngine {
         joinToString("") { "%02x".format(it.toInt() and 0xFF) }
 
     private fun hexStringToByteArray(hex: String): ByteArray {
-        val clean = hex.replace("\\s".toRegex(), "")
-        val data = ByteArray(clean.length / 2)
-        for (i in data.indices) {
-            data[i] = ((Character.digit(clean[i * 2], 16) shl 4) +
-                    Character.digit(clean[i * 2 + 1], 16)).toByte()
-        }
+        val data = ByteArray(hex.length / 2)
+        for (i in data.indices)
+            data[i] = ((Character.digit(hex[i * 2], 16) shl 4) +
+                    Character.digit(hex[i * 2 + 1], 16)).toByte()
         return data
     }
 
     private fun mockResults(value: Int, type: DataType): List<ScanResult> {
-        val base = 0x7FFF0000L
+        val base  = 0x7FFF0000L
         val bytes = intToLEBytes(value, type.byteSize)
         return (0..4).map { i -> ScanResult(base + i * 0x1000L, bytes.copyOf(), type) }
     }
