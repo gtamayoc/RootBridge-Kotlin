@@ -46,6 +46,7 @@ fun OverlayContent(
     onRefineChanged: () -> Unit,
     onRefineUnchanged: () -> Unit,
     onWrite: (Int, Long, Int) -> Unit,
+    onWriteAll: (Int, Int) -> Unit,
     onReset: () -> Unit,
     onGetRunningApps: suspend () -> List<com.gtc.rootbridgekotlin.core.memory.ProcessInfo>,
     onOverrideTarget: (Int, String) -> Unit
@@ -75,6 +76,7 @@ fun OverlayContent(
                 onRefineChanged = onRefineChanged,
                 onRefineUnchanged = onRefineUnchanged,
                 onWrite = onWrite,
+                onWriteAll = onWriteAll,
                 onReset = onReset,
                 onGetRunningApps = onGetRunningApps,
                 onOverrideTarget = onOverrideTarget,
@@ -131,6 +133,7 @@ fun ExpandedMenu(
     onRefineChanged: () -> Unit,
     onRefineUnchanged: () -> Unit,
     onWrite: (Int, Long, Int) -> Unit,
+    onWriteAll: (Int, Int) -> Unit,
     onReset: () -> Unit,
     onGetRunningApps: suspend () -> List<com.gtc.rootbridgekotlin.core.memory.ProcessInfo>,
     onOverrideTarget: (Int, String) -> Unit,
@@ -277,6 +280,7 @@ fun ExpandedMenu(
                             onRefineChanged  = onRefineChanged,
                             onRefineUnchanged = onRefineUnchanged,
                             onWrite          = onWrite,
+                            onWriteAll       = onWriteAll,
                             onReset          = onReset
                         )
                     }
@@ -458,11 +462,24 @@ fun ResultsPhase(
     onRefineChanged: () -> Unit,
     onRefineUnchanged: () -> Unit,
     onWrite: (Int, Long, Int) -> Unit,
+    onWriteAll: (Int, Int) -> Unit,
     onReset: () -> Unit
 ) {
     var exactQuery by remember { mutableStateOf("") }
+    var writeAllQuery by remember { mutableStateOf("") }
+    var isWriteAllMode by remember { mutableStateOf(false) }
     var selectedAddress by remember { mutableStateOf<Long?>(null) }
     var editQuery by remember { mutableStateOf("") }
+
+    // If results change after a filter and the selected address is no longer present, clear selection
+    LaunchedEffect(results) {
+        if (selectedAddress != null && results.none { it.address == selectedAddress }) {
+            selectedAddress = null
+            editQuery = ""
+        }
+    }
+
+    val isEditing = selectedAddress != null
 
     Column(modifier = Modifier.fillMaxHeight()) {
 
@@ -522,11 +539,16 @@ fun ResultsPhase(
                         )
                     }
                     TextButton(onClick = {
-                        selectedAddress = if (selectedAddress == result.address) null else result.address
-                        editQuery = ""
+                        if (isSelected) {
+                            selectedAddress = null
+                            editQuery = ""
+                        } else {
+                            selectedAddress = result.address
+                            editQuery = result.getIntValue().toString() // pre-fill current value
+                        }
                     }) {
                         Text(
-                            if (isSelected) "CANCEL" else "EDIT",
+                            if (isSelected) "◄ BACK" else "EDIT",
                             color = if (isSelected) AccentError else AccentSignal,
                             style = Typography.labelSmall
                         )
@@ -538,25 +560,116 @@ fun ResultsPhase(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // ── Write panel (shown when an address is selected) ──
-        if (selectedAddress != null) {
+        // ── EXCLUSIVE bottom panel: only ONE active at a time ──
+        if (isEditing) {
+
+            // ────── WRITE PANEL ──────
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(DeepSurface, RoundedCornerShape(8.dp))
-                    .padding(10.dp)
+                    .padding(12.dp)
             ) {
-                Text(
-                    text = "Edit → 0x${selectedAddress!!.toString(16).uppercase()}",
-                    style = Typography.labelSmall,
-                    color = TextSecondary
-                )
-                Spacer(modifier = Modifier.height(6.dp))
+                // Header with back button
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "✏  0x${selectedAddress!!.toString(16).uppercase()}",
+                        style = Typography.labelMedium,
+                        color = AccentSignal
+                    )
+                    TextButton(onClick = {
+                        selectedAddress = null
+                        editQuery = ""
+                    }) {
+                        Text("◄ BACK", color = TextSecondary, style = Typography.labelSmall)
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     OutlinedTextField(
                         value = editQuery,
                         onValueChange = { editQuery = it },
                         placeholder = { Text("New value", color = TextSecondary) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = DeepSurface,
+                            unfocusedContainerColor = DeepSurface,
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary,
+                            cursorColor = AccentSignal,
+                            focusedIndicatorColor = AccentSignal
+                        )
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            editQuery.trim().toIntOrNull()?.let { v ->
+                                onWrite(pid, selectedAddress!!, v)
+                            }
+                        },
+                        enabled = editQuery.trim().isNotEmpty() && writeState !is WriteState.Writing,
+                        colors = ButtonDefaults.buttonColors(containerColor = AccentSignal)
+                    ) {
+                        if (writeState is WriteState.Writing)
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                color = DeepVoid,
+                                strokeWidth = 2.dp
+                            )
+                        else
+                            Text("WRITE", color = DeepVoid)
+                    }
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                when (writeState) {
+                    is WriteState.Success -> Text(
+                        "✓ Write successful",
+                        color = AccentSignal,
+                        style = Typography.labelSmall
+                    )
+                    is WriteState.Error -> Text(
+                        "✗ ${writeState.msg}",
+                        color = AccentError,
+                        style = Typography.labelSmall
+                    )
+                    else -> {}
+                }
+            }
+
+        } else if (isWriteAllMode) {
+            // ────── WRITE ALL PANEL (Bulk) ──────
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(DeepSurface, RoundedCornerShape(8.dp))
+                    .padding(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "🚀  Write All ($totalResults addresses)",
+                        style = Typography.labelMedium,
+                        color = AccentPlasma
+                    )
+                    TextButton(onClick = { isWriteAllMode = false }) {
+                        Text("◄ BACK", color = TextSecondary, style = Typography.labelSmall)
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = writeAllQuery,
+                        onValueChange = { writeAllQuery = it },
+                        placeholder = { Text("Value for ALL", color = TextSecondary) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
                         modifier = Modifier.weight(1f),
@@ -572,98 +685,110 @@ fun ResultsPhase(
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
                         onClick = {
-                            editQuery.trim().toIntOrNull()?.let { v ->
-                                onWrite(pid, selectedAddress!!, v)
+                            writeAllQuery.trim().toIntOrNull()?.let { v ->
+                                onWriteAll(pid, v)
+                                isWriteAllMode = false // Close after trigger
                             }
                         },
-                        enabled = editQuery.trim().isNotEmpty() && writeState !is WriteState.Writing,
-                        colors = ButtonDefaults.buttonColors(containerColor = AccentSignal)
+                        enabled = writeAllQuery.trim().isNotEmpty() && writeState !is WriteState.Writing,
+                        colors = ButtonDefaults.buttonColors(containerColor = AccentPlasma)
                     ) {
                         if (writeState is WriteState.Writing)
-                            CircularProgressIndicator(modifier = Modifier.size(16.dp), color = DeepVoid, strokeWidth = 2.dp)
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                color = DeepVoid,
+                                strokeWidth = 2.dp
+                            )
                         else
-                            Text("WRITE", color = DeepVoid)
+                            Text("ALL", color = DeepVoid)
                     }
                 }
-                if (writeState is WriteState.Success)
-                    Text("✓ Write successful", color = AccentSignal, style = Typography.labelSmall)
-                else if (writeState is WriteState.Error)
-                    Text("✗ Write failed", color = AccentError, style = Typography.labelSmall)
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-        }
-
-        // ── Refine Panel ──
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(DeepSurface, RoundedCornerShape(8.dp))
-                .padding(10.dp)
-        ) {
-            Text("Refine Results", style = Typography.labelMedium, color = TextPrimary)
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Exact value filter
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    value = exactQuery,
-                    onValueChange = { exactQuery = it },
-                    placeholder = { Text("Filter by exact value…", color = TextSecondary) },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    singleLine = true,
-                    modifier = Modifier.weight(1f),
-                    colors = TextFieldDefaults.colors(
-                        focusedContainerColor = DeepSurface,
-                        unfocusedContainerColor = DeepSurface,
-                        focusedTextColor = TextPrimary,
-                        unfocusedTextColor = TextPrimary,
-                        cursorColor = AccentPlasma,
-                        focusedIndicatorColor = AccentPlasma
-                    )
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Button(
-                    onClick = { exactQuery.trim().toIntOrNull()?.let { onRefineExact(it) } },
-                    enabled = exactQuery.trim().isNotEmpty(),
-                    colors = ButtonDefaults.buttonColors(containerColor = AccentPlasma)
-                ) {
-                    Text("EXACT", color = DeepVoid, style = Typography.labelSmall)
-                }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+        } else {
 
-            // Dynamic change filters
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            // ────── REFINE PANEL ──────
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(DeepSurface, RoundedCornerShape(8.dp))
+                    .padding(10.dp)
             ) {
-                // CHANGED button
-                Button(
-                    onClick = onRefineChanged,
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = AccentSignal.copy(alpha = 0.85f)
+                Text("Refine Results", style = Typography.labelMedium, color = TextPrimary)
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Exact value filter
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = exactQuery,
+                        onValueChange = { exactQuery = it },
+                        placeholder = { Text("Filter by exact value…", color = TextSecondary) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = DeepSurface,
+                            unfocusedContainerColor = DeepSurface,
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary,
+                            cursorColor = AccentPlasma,
+                            focusedIndicatorColor = AccentPlasma
+                        )
                     )
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("CHANGED", color = DeepVoid, style = Typography.labelSmall)
-                        Text("values differ", color = DeepVoid.copy(alpha = 0.7f), style = Typography.labelSmall)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = { exactQuery.trim().toIntOrNull()?.let { onRefineExact(it) } },
+                        enabled = exactQuery.trim().isNotEmpty(),
+                        colors = ButtonDefaults.buttonColors(containerColor = AccentPlasma)
+                    ) {
+                        Text("EXACT", color = DeepVoid, style = Typography.labelSmall)
                     }
                 }
-                // UNCHANGED button
-                Button(
-                    onClick = onRefineUnchanged,
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = DeepElevated
-                    ),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, TextSecondary.copy(alpha = 0.4f))
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Dynamic change filter buttons
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("UNCHANGED", color = TextPrimary, style = Typography.labelSmall)
-                        Text("values same", color = TextSecondary, style = Typography.labelSmall)
+                    Button(
+                        onClick = onRefineChanged,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = AccentSignal.copy(alpha = 0.85f)
+                        )
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("CHANGED", color = DeepVoid, style = Typography.labelSmall)
+                            Text("values differ", color = DeepVoid.copy(alpha = 0.7f), style = Typography.labelSmall)
+                        }
                     }
+                    Button(
+                        onClick = onRefineUnchanged,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = DeepElevated),
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp, TextSecondary.copy(alpha = 0.4f)
+                        )
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("UNCHANGED", color = TextPrimary, style = Typography.labelSmall)
+                            Text("values same", color = TextSecondary, style = Typography.labelSmall)
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // WRITE ALL TRIGGER BUTTON
+                Button(
+                    onClick = { isWriteAllMode = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = DeepElevated),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, AccentPlasma.copy(alpha = 0.5f))
+                ) {
+                    Text("BULK MODIFY ALL ($totalResults)", color = AccentPlasma, style = Typography.labelMedium)
                 }
             }
         }

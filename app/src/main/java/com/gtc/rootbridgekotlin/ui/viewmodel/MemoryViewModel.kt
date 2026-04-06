@@ -222,6 +222,45 @@ class MemoryViewModel : ViewModel() {
     }
 
     // ────────────────────────────────────────────────────────────────────────
+    // WRITE ALL
+    // ────────────────────────────────────────────────────────────────────────
+
+    fun writeAllValue(pid: Int, value: Int) {
+        val state = _scanState.value as? ScanState.Results ?: return
+        val type  = state.dataType
+        val targetPid = _lockedPid.value.takeIf { it > 0 } ?: pid
+        _writeState.value = WriteState.Writing
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val bytes = MemoryEngine.intToLEBytes(value, type.byteSize)
+                val successCount = MemoryEngine.writeAllBytes(targetPid, bytes)
+                
+                if (successCount > 0) {
+                    _writeState.value = WriteState.Success
+                    kotlinx.coroutines.delay(2000)
+                    _writeState.value = WriteState.Idle
+                    refreshImmediate()
+                } else {
+                    _writeState.value = WriteState.Error("No addresses written")
+                }
+            } catch (e: Exception) {
+                _writeState.value = WriteState.Error(e.message ?: "Unknown error")
+            }
+        }
+    }
+
+    private fun refreshImmediate() {
+        val state = _scanState.value as? ScanState.Results ?: return
+        val pid   = _lockedPid.value.takeIf { it > 0 } ?: return
+        
+        viewModelScope.launch(Dispatchers.IO) {
+            val displayList = MemoryEngine.fetchResults(pid, state.dataType, DISPLAY_LIMIT)
+            _scanState.value = state.copy(results = displayList)
+        }
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
     // RESET
     // ────────────────────────────────────────────────────────────────────────
 

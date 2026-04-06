@@ -329,6 +329,40 @@ void cmdClearSession() {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+// WRITE ALL — Bulk write a new value to all filtered addresses
+// ────────────────────────────────────────────────────────────────────────────
+void cmdWriteAll(int pid, const vector<uint8_t>& new_value) {
+    vector<MemEntry> entries;
+    uint32_t needle_size = 0;
+    if (!readSession(entries, needle_size) || entries.empty()) {
+        cerr << "No session or empty session to write to\n";
+        return;
+    }
+
+    string memPath = "/proc/" + to_string(pid) + "/mem";
+    int fd = open(memPath.c_str(), O_WRONLY);
+    if (fd < 0) {
+        cerr << "Cannot open " << memPath << " for writing\n";
+        return;
+    }
+
+    size_t new_len = new_value.size();
+    size_t success_count = 0;
+    for (auto& e : entries) {
+        ssize_t w = pwrite64(fd, new_value.data(), new_len, (off64_t)e.address);
+        if (w == (ssize_t)new_len) {
+            success_count++;
+            e.value.assign(new_value.begin(), new_value.end()); // Update snapshot to new value
+        }
+    }
+    close(fd);
+
+    // Save updated snapshots back to session
+    writeSession(entries, (uint32_t)new_len);
+    cout << "WRITE_SUCCESS:" << success_count << "\n";
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 // MAIN
 // ────────────────────────────────────────────────────────────────────────────
 int main(int argc, char* argv[]) {
@@ -339,6 +373,7 @@ int main(int argc, char* argv[]) {
              << "  filter_changed <pid>\n"
              << "  filter_unchanged <pid>\n"
              << "  print_results  <limit>\n"
+             << "  write_all      <pid> <new_value_hex>\n"
              << "  clear_session\n";
         return 1;
     }
@@ -364,6 +399,10 @@ int main(int argc, char* argv[]) {
     } else if (cmd == "print_results") {
         size_t limit = (argc >= 3) ? (size_t)atoll(argv[2]) : 500;
         cmdPrintResults(limit);
+
+    } else if (cmd == "write_all") {
+        if (argc < 4) { cerr << "write_all requires <pid> <new_value_hex>\n"; return 1; }
+        cmdWriteAll(atoi(argv[2]), hexToBytes(argv[3]));
 
     } else if (cmd == "clear_session") {
         cmdClearSession();

@@ -156,6 +156,26 @@ object MemoryEngine {
     }
 
     // ────────────────────────────────────────────────────────────────────────
+    // WRITE ALL (Bulk Write via NDK)
+    // ────────────────────────────────────────────────────────────────────────
+
+    suspend fun writeAllBytes(pid: Int, bytes: ByteArray): Int = withContext(Dispatchers.IO) {
+        if (!prepareBinary()) return@withContext 0
+        if (pid <= 0) return@withContext 0
+
+        val hexValue = bytes.toHexString()
+        val cmd = "$binaryPath write_all $pid $hexValue 2>&1"
+        Log.i(TAG, "writeAllBytes -> EXEC: $cmd")
+
+        val result = RootShell.exec(cmd)
+        Log.i(TAG, "writeAllBytes -> STDOUT: \n${result.stdout}")
+
+        // Expected output: "WRITE_SUCCESS:<count>"
+        val line = result.stdout.lines().firstOrNull { it.startsWith("WRITE_SUCCESS:") }
+        return@withContext line?.removePrefix("WRITE_SUCCESS:")?.trim()?.toIntOrNull() ?: 0
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
     // CLEAR SESSION
     // ────────────────────────────────────────────────────────────────────────
 
@@ -255,6 +275,8 @@ object MemoryEngine {
                     Character.digit(hex[i * 2 + 1], 16)).toByte()
         return data
     }
+
+
 
     private fun mockResults(value: Int, type: DataType): List<ScanResult> {
         val base  = 0x7FFF0000L

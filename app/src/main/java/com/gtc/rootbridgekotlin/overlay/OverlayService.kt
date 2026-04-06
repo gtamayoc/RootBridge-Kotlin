@@ -221,6 +221,7 @@ class OverlayService : LifecycleService(), SavedStateRegistryOwner, ViewModelSto
                         onRefineChanged = { memoryViewModel.refineChanged() },
                         onRefineUnchanged = { memoryViewModel.refineUnchanged() },
                         onWrite = { pid, address, value -> memoryViewModel.writeValue(pid, address, value) },
+                        onWriteAll = { pid, value -> memoryViewModel.writeAllValue(pid, value) },
                         onReset = { memoryViewModel.reset() },
                         onGetRunningApps = { ProcessScanner.getRunningApplications() },  // suspend lambda — called from LaunchedEffect
                         onOverrideTarget = { pid, pkg -> 
