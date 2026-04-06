@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.isActive
 
 sealed class ScanState {
     data object Idle : ScanState()
@@ -48,6 +49,9 @@ class MemoryViewModel : ViewModel() {
     private val _lockedPid = MutableStateFlow(-1)
     val lockedPid: StateFlow<Int> = _lockedPid.asStateFlow()
 
+    /** Polling job for dynamic background refreshing (Option A) */
+    private var refreshJob: kotlinx.coroutines.Job? = null
+
     // ──────────────────────────────────────────────────────────────────────────
     // SCAN
     // ──────────────────────────────────────────────────────────────────────────
@@ -80,10 +84,12 @@ class MemoryViewModel : ViewModel() {
                 }
                 Log.i(TAG, "scan() — completed: ${results.size} results for pid=$pid")
 
-                _scanState.value = if (results.isEmpty()) {
-                    ScanState.Error("No matches found for value=$value in PID $pid")
+                if (results.isEmpty()) {
+                    _scanState.value = ScanState.Error("No matches found for value=$value in PID $pid")
                 } else {
-                    ScanState.Results(results)
+                    MemoryEngine.setSession(pid, results)
+                    _scanState.value = ScanState.Results(results)
+                    startRefreshJob(pid)
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "scan() — exception: ${e.message}", e)
@@ -110,12 +116,18 @@ class MemoryViewModel : ViewModel() {
 
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val newResults = MemoryEngine.filterResults(targetPid, currentState.results, newValue)
+                // Read from our Session Engine cache if possible to ensure we search exactly what we found.
+                val sessionResults = MemoryEngine.getSession(targetPid) ?: currentState.results
+                
+                val newResults = MemoryEngine.filterResults(targetPid, sessionResults, newValue)
                 Log.i(TAG, "refine() — ${newResults.size} addresses still match $newValue")
-                _scanState.value = if (newResults.isEmpty()) {
-                    ScanState.Error("No addresses match $newValue after refinement")
+                
+                if (newResults.isEmpty()) {
+                    _scanState.value = ScanState.Error("No addresses match $newValue after refinement")
                 } else {
-                    ScanState.Results(newResults)
+                    MemoryEngine.setSession(targetPid, newResults)
+                    _scanState.value = ScanState.Results(newResults)
+                    startRefreshJob(targetPid)
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "refine() — exception: ${e.message}", e)
@@ -159,8 +171,44 @@ class MemoryViewModel : ViewModel() {
 
     fun reset() {
         Log.d(TAG, "reset() — clearing scan and write state")
+        refreshJob?.cancel()
+        if (_lockedPid.value > 0) {
+            MemoryEngine.clearSession(_lockedPid.value)
+        }
         _scanState.value = ScanState.Idle
         _writeState.value = WriteState.Idle
         _lockedPid.value = -1
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // REFRESH JOB
+    // ──────────────────────────────────────────────────────────────────────────
+
+    private fun startRefreshJob(pid: Int) {
+        refreshJob?.cancel()
+        if (pid <= 0) return
+
+        refreshJob = viewModelScope.launch(Dispatchers.IO) {
+            while (isActive) {
+                // Wait 2 seconds between updates to avoid high CPU usage
+                kotlinx.coroutines.delay(2000L)
+
+                val state = _scanState.value
+                if (state !is ScanState.Results) continue
+
+                val currentResults = state.results
+                if (currentResults.isEmpty()) continue
+
+                // To minimize root shell overhead, we only refresh the first 25 (most likely visible).
+                // Or max 25 elements.
+                val topResults = currentResults.take(25)
+                val refreshedTop = MemoryEngine.refreshAddresses(pid, topResults)
+
+                // Re-merge with the rest
+                val merged = refreshedTop + currentResults.drop(25)
+
+                _scanState.value = ScanState.Results(merged)
+            }
+        }
     }
 }

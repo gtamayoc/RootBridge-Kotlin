@@ -28,37 +28,15 @@ object ProcessScanner {
      * Excludes kernel threads, zygotes, and system background services.
      */
     suspend fun getRunningApplications(): List<ProcessInfo> = withContext(Dispatchers.IO) {
-        // List numeric proc dirs and print pid + cmdline
-        val script = "for d in /proc/[0-9]*/; do p=\${d%/}; p=\${p##*/}; c=\$(cat \$d/cmdline 2>/dev/null | tr '\\0' ' '); [ -n \"\$c\" ] && echo \"\$p \$c\"; done"
-        val result = RootShell.exec(script)
-        if (result.exitCode != 0 || result.stdout.isBlank()) return@withContext emptyList()
-
-        val systemProcessPrefixes = listOf(
-            "zygote", "system_server", "surfaceflinger", "mediaserver", "netd", "logd",
-            "storaged", "healthd", "lmkd", "adbd", "vold", "init", "kthreadd",
-            "android.hardware.", "vendor.", "com.android.bluetooth", "com.android.phone",
-            "com.android.systemui", "com.android.nfc"
-        )
-
         val apps = mutableListOf<ProcessInfo>()
-        for (line in result.stdout.lines()) {
-            val parts = line.trim().split(Regex("\\s+"), limit = 2)
-            if (parts.size < 2) continue
-            
-            val pid = parts[0].toIntOrNull() ?: continue
-            val pkgName = parts[1].trim().split(" ").firstOrNull() ?: continue
-            
-            if (!pkgName.contains('.')) continue
-            
-            val isSystem = systemProcessPrefixes.any { pkgName.startsWith(it) }
-            val isSelf = pkgName.startsWith("com.gtc.rootbridgekotlin")
-            if (isSystem || isSelf) continue
-
-            apps.add(ProcessInfo(pid, pkgName, pkgName, false))
+        
+        // Detectamos la app en primer plano (visible) y retornamos solo esa para analizar automáticamente.
+        val fgProcess = getForegroundProcess()
+        if (fgProcess != null) {
+            apps.add(fgProcess)
         }
-
-        // Distinct by package name (keep highest PID if there are multiple processes, or just first).
-        apps.distinctBy { it.packageName }.sortedBy { it.packageName }
+        
+        apps
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -135,7 +113,7 @@ object ProcessScanner {
     // PID resolution
     // ──────────────────────────────────────────────────────────────────────────
 
-    private suspend fun resolvePid(packageName: String, source: String): ProcessInfo? {
+    suspend fun resolvePid(packageName: String, source: String = "resolvePid"): ProcessInfo? {
         // Method 1: pidof
         var pidResult = RootShell.exec("pidof $packageName 2>/dev/null")
         Log.d(TAG, "[$source] pidof '$packageName' exit=${pidResult.exitCode} out='${pidResult.stdout}'")

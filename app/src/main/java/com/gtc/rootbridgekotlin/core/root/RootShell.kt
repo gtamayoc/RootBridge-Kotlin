@@ -26,6 +26,7 @@ object RootShell {
             val os = DataOutputStream(process.outputStream)
 
             os.writeBytes("$cmd\n")
+            os.writeBytes("echo \"\"\n")
             os.writeBytes("echo __EXIT__\$?\n")
             os.writeBytes("exit\n")
             os.flush()
@@ -64,6 +65,7 @@ object RootShell {
                 val os = persistentOs ?: return@withLock exec(cmd) // fallback
 
                 os.writeBytes("$cmd\n")
+                os.writeBytes("echo \"\"\n")
                 os.writeBytes("echo __EXIT__\$?\n")
                 os.flush()
 

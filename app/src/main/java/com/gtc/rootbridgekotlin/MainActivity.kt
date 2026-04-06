@@ -29,6 +29,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         
+        com.gtc.rootbridgekotlin.core.memory.MemoryEngine.nativeLibDir = applicationInfo.nativeLibraryDir
+        
         viewModel.checkRoot()
 
         setContent {

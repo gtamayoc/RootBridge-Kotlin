@@ -141,10 +141,18 @@ class OverlayService : LifecycleService(), SavedStateRegistryOwner, ViewModelSto
     /** Resolves PID asynchronously so the UI does not block on the shell call. */
     private fun resolvePidForPackage(pkg: String) {
         lifecycleScope.launch {
-            val process = ProcessScanner.getForegroundProcess()
+            // Utilizamos resolvePid directamente con el paquete que ya sabemos que está en foreground
+            val process = ProcessScanner.resolvePid(pkg, "OverlayService") 
+                ?: ProcessScanner.getForegroundProcess()
+            
             if (process != null && process.packageName == pkg) {
                 currentAppPid.value = process.pid
                 Log.i("OverlayService", "PID resolved → $pkg PID=${process.pid}")
+            } else if (process != null) {
+                // If it found something else but we need something, just accept it
+                currentAppPid.value = process.pid
+                currentAppPackage.value = process.packageName
+                Log.i("OverlayService", "PID fallback resolved → ${process.packageName} PID=${process.pid}")
             } else {
                 Log.w("OverlayService", "PID resolution mismatch or null for '$pkg'")
             }
@@ -212,7 +220,7 @@ class OverlayService : LifecycleService(), SavedStateRegistryOwner, ViewModelSto
                         onRefine = { pid, value -> memoryViewModel.refine(pid, value) },
                         onWrite = { pid, address, value -> memoryViewModel.writeValue(pid, address, value) },
                         onReset = { memoryViewModel.reset() },
-                        onGetRunningApps = { ProcessScanner.getRunningApplications() },
+                        onGetRunningApps = { ProcessScanner.getRunningApplications() },  // suspend lambda — called from LaunchedEffect
                         onOverrideTarget = { pid, pkg -> 
                             manualPidOverride.value = pid
                             currentAppPid.value = pid
