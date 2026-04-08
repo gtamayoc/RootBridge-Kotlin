@@ -40,7 +40,7 @@ static const size_t CHUNK_SIZE  = 4 * 1024 * 1024; // 4 MB
 // ────────────────────────────────────────────────────────────────────────────
 struct MemEntry {
     uint64_t address;
-    vector<uint8_t> value; // snapshot value at time of scan/filter
+    uint8_t value[16]; // snapshot value at time of scan/filter (max 16 bytes)
 };
 
 struct MemoryRegion {
@@ -110,7 +110,7 @@ bool writeSession(const vector<MemEntry>& entries, uint32_t needle_size) {
     fwrite(&needle_size, sizeof(uint32_t), 1, f);
     for (const auto& e : entries) {
         fwrite(&e.address, sizeof(uint64_t), 1, f);
-        fwrite(e.value.data(), 1, needle_size, f);
+        fwrite(&e.value[0], 1, needle_size, f);
     }
     fclose(f);
     return true;
@@ -126,10 +126,9 @@ bool readSession(vector<MemEntry>& out_entries, uint32_t& out_needle_size) {
     }
 
     MemEntry e;
-    e.value.resize(out_needle_size);
     while (true) {
         if (fread(&e.address, sizeof(uint64_t), 1, f) != 1) break;
-        if (fread(e.value.data(), 1, out_needle_size, f) != out_needle_size) break;
+        if (fread(&e.value[0], 1, out_needle_size, f) != out_needle_size) break;
         out_entries.push_back(e);
     }
     fclose(f);
@@ -169,8 +168,16 @@ void cmdScan(int pid, const vector<uint8_t>& needle) {
                 if (memcmp(buf + i, needle.data(), needle_len) == 0) {
                     MemEntry e;
                     e.address = cur + i;
-                    e.value.assign(needle.begin(), needle.end());
-                    results.push_back(move(e));
+                    memcpy(e.value, needle.data(), needle_len);
+                    results.push_back(e);
+                    
+                    if (results.size() >= 1000000) {
+                        delete[] buf;
+                        close(fd);
+                        writeSession(results, (uint32_t)needle_len);
+                        cout << "TOTAL_FOUND:" << results.size() << "\n";
+                        return;
+                    }
                 }
             }
             cur += bytesRead;
@@ -212,8 +219,8 @@ void cmdFilterExact(int pid, const vector<uint8_t>& needle) {
         if (r == (ssize_t)nlen && memcmp(buf.data(), needle.data(), nlen) == 0) {
             MemEntry ne;
             ne.address = e.address;
-            ne.value.assign(needle.begin(), needle.end()); // Update stored snapshot
-            kept.push_back(move(ne));
+            memcpy(ne.value, needle.data(), nlen); // Update stored snapshot
+            kept.push_back(ne);
         }
     }
     close(fd);
@@ -250,8 +257,8 @@ void cmdFilterChanged(int pid) {
             // Value CHANGED — store new value as the snapshot for next filter iteration
             MemEntry ne;
             ne.address = e.address;
-            ne.value.assign(buf.begin(), buf.end()); // Update to current value
-            kept.push_back(move(ne));
+            memcpy(ne.value, buf.data(), needle_size); // Update to current value
+            kept.push_back(ne);
         }
     }
     close(fd);
@@ -310,9 +317,9 @@ void cmdPrintResults(size_t limit) {
     for (size_t i = 0; i < count; ++i) {
         // Output: address,hex_value_bytes
         cout << entries[i].address;
-        for (uint8_t b : entries[i].value) {
+        for (size_t j = 0; j < needle_size; ++j) {
             char tmp[3];
-            snprintf(tmp, sizeof(tmp), "%02x", b);
+            snprintf(tmp, sizeof(tmp), "%02x", entries[i].value[j]);
             cout << "," << tmp;
         }
         cout << "\n";
@@ -352,7 +359,7 @@ void cmdWriteAll(int pid, const vector<uint8_t>& new_value) {
         ssize_t w = pwrite64(fd, new_value.data(), new_len, (off64_t)e.address);
         if (w == (ssize_t)new_len) {
             success_count++;
-            e.value.assign(new_value.begin(), new_value.end()); // Update snapshot to new value
+            memcpy(e.value, new_value.data(), new_len); // Update snapshot to new value
         }
     }
     close(fd);
@@ -374,6 +381,8 @@ int main(int argc, char* argv[]) {
              << "  filter_unchanged <pid>\n"
              << "  print_results  <limit>\n"
              << "  write_all      <pid> <new_value_hex>\n"
+             << "  read           <pid> <address> <size>\n"
+             << "  write          <pid> <address> <new_value_hex>\n"
              << "  clear_session\n";
         return 1;
     }
@@ -403,6 +412,44 @@ int main(int argc, char* argv[]) {
     } else if (cmd == "write_all") {
         if (argc < 4) { cerr << "write_all requires <pid> <new_value_hex>\n"; return 1; }
         cmdWriteAll(atoi(argv[2]), hexToBytes(argv[3]));
+
+    } else if (cmd == "read") {
+        if (argc < 5) { cerr << "read requires <pid> <address> <size>\n"; return 1; }
+        uint64_t addr = strtoull(argv[3], nullptr, 10);
+        size_t size = atoi(argv[4]);
+        if (size > 1024) size = 1024;
+        
+        string memPath = "/proc/" + to_string(atoi(argv[2])) + "/mem";
+        int fd = open(memPath.c_str(), O_RDONLY);
+        if (fd >= 0) {
+            vector<uint8_t> buf(size);
+            ssize_t r = pread64(fd, buf.data(), size, (off64_t)addr);
+            close(fd);
+            if (r == (ssize_t)size) {
+                for (size_t i = 0; i < size; ++i) {
+                    char tmp[3];
+                    snprintf(tmp, sizeof(tmp), "%02x", buf[i]);
+                    cout << tmp;
+                }
+                cout << "\n";
+            }
+        }
+
+    } else if (cmd == "write") {
+        if (argc < 5) { cerr << "write requires <pid> <address> <hex_value>\n"; return 1; }
+        uint64_t addr = strtoull(argv[3], nullptr, 10);
+        vector<uint8_t> val = hexToBytes(argv[4]);
+        
+        string memPath = "/proc/" + to_string(atoi(argv[2])) + "/mem";
+        int fd = open(memPath.c_str(), O_WRONLY);
+        if (fd >= 0) {
+            ssize_t w = pwrite64(fd, val.data(), val.size(), (off64_t)addr);
+            close(fd);
+            if (w == (ssize_t)val.size()) cout << "WRITE_SUCCESS\n";
+            else cout << "WRITE_FAILED\n";
+        } else {
+            cout << "WRITE_FAILED\n";
+        }
 
     } else if (cmd == "clear_session") {
         cmdClearSession();

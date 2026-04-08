@@ -143,16 +143,15 @@ object MemoryEngine {
         type: DataType = DataType.DWORD
     ): Boolean = withContext(Dispatchers.IO) {
         if (pid <= 0) return@withContext true
+        if (!prepareBinary()) return@withContext false
 
         val bytes        = intToLEBytes(value, type.byteSize)
-        val bytesEscaped = bytes.joinToString("") { "\\x%02x".format(it.toInt() and 0xFF) }
+        val hexValue     = bytes.toHexString()
 
-        val ddCmd = "printf '$bytesEscaped' | dd of=/proc/$pid/mem bs=${type.byteSize} seek=$address oflag=seek_bytes conv=notrunc 2>&1"
-        val ddRes = RootShell.exec(ddCmd)
-        if (ddRes.exitCode == 0) return@withContext true
-
-        val bbCmd = "printf '$bytesEscaped' | busybox dd of=/proc/$pid/mem bs=${type.byteSize} seek=$address oflag=seek_bytes conv=notrunc 2>&1"
-        RootShell.exec(bbCmd).exitCode == 0
+        val cmd = "$binaryPath write $pid $address $hexValue 2>&1"
+        val res = RootShell.exec(cmd)
+        
+        return@withContext res.stdout.contains("WRITE_SUCCESS")
     }
 
     // ────────────────────────────────────────────────────────────────────────
@@ -249,11 +248,11 @@ object MemoryEngine {
     // ────────────────────────────────────────────────────────────────────────
 
     private suspend fun readBytes(pid: Int, address: Long, byteCount: Int): ByteArray? {
-        val cmd = "dd if=/proc/$pid/mem iflag=skip_bytes bs=$byteCount skip=$address count=1 2>/dev/null | xxd -p | tr -d '\\n'"
+        val cmd = "$binaryPath read $pid $address $byteCount 2>/dev/null"
         val result = RootShell.execPersistent(cmd)
         if (result.exitCode == 0 && result.stdout.isNotBlank()) {
             return try {
-                hexStringToByteArray(result.stdout.trim().lowercase().take(byteCount * 2))
+                hexStringToByteArray(result.stdout.trim().lowercase())
             } catch (e: Exception) { null }
         }
         return null
