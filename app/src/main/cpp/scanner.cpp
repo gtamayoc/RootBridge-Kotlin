@@ -253,7 +253,7 @@ void cmdFilterChanged(int pid) {
 
     for (const auto& e : entries) {
         ssize_t r = pread64(fd, buf.data(), needle_size, (off64_t)e.address);
-        if (r == (ssize_t)needle_size && memcmp(buf.data(), e.value.data(), needle_size) != 0) {
+        if (r == (ssize_t)needle_size && memcmp(buf.data(), e.value, needle_size) != 0) {
             // Value CHANGED — store new value as the snapshot for next filter iteration
             MemEntry ne;
             ne.address = e.address;
@@ -291,7 +291,7 @@ void cmdFilterUnchanged(int pid) {
 
     for (const auto& e : entries) {
         ssize_t r = pread64(fd, buf.data(), needle_size, (off64_t)e.address);
-        if (r == (ssize_t)needle_size && memcmp(buf.data(), e.value.data(), needle_size) == 0) {
+        if (r == (ssize_t)needle_size && memcmp(buf.data(), e.value, needle_size) == 0) {
             // Value unchanged — keep snapshot as-is
             kept.push_back(e);
         }
