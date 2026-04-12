@@ -1,17 +1,14 @@
 ---
-status: testing
+status: complete
 phase: 01-project-initialization
 source: [01-01-SUMMARY.md]
 started: 2026-04-08T23:38:00Z
-updated: 2026-04-12T00:48:54Z
+updated: 2026-04-11T23:12:00Z
 ---
 
 ## Current Test
-number: 3
-name: CI Action Configuration
-expected: |
-  Committing/Pushing to your git repository correctly displays a GitHub action runner executing gradle build.
-awaiting: user response
+
+[testing complete]
 
 ## Tests
 
@@ -25,15 +22,24 @@ result: pass
 
 ### 3. CI Action Configuration
 expected: Committing/Pushing to your git repository correctly displays a GitHub action runner executing gradle build.
-result: [pending]
+result: issue
+reported: "pasos para fix \"refusing to allow an OAuth App to create or update workflow without workflow scope\""
+severity: blocker
 
 ## Summary
 
 total: 3
 passed: 2
-issues: 0
-pending: 1
+issues: 1
+pending: 0
 skipped: 0
 
 ## Gaps
 
+- truth: "Committing/Pushing to your git repository correctly displays a GitHub action runner executing gradle build."
+  status: failed
+  reason: "User reported: refusing to allow an OAuth App to create or update workflow without workflow scope"
+  severity: blocker
+  test: 3
+  artifacts: []
+  missing: []
