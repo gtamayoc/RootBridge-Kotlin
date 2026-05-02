@@ -29,14 +29,50 @@ It features a dual-engine abstraction capable of operating safely in both **ROOT
 * **StateFlow Reactivity**: Uses Kotlin Coroutines and StateFlow to maintain completely synchronous memory states between the background worker and the UI.
 * **Floating Overlay Monitor**: Keep track of dynamic values and addresses with a minimal, non-intrusive floating overlay (requires `SYSTEM_ALERT_WINDOW`).
 
-## 📸 Screenshots
+## 📸 Step-by-Step Usage Guide
 
-> 🔜 **Coming in next release** — QA screenshots using a dedicated sample app (`RootBridge-SampleApp`) are pending and will be added in the next commit.
+Below is a complete walkthrough of using **RootBridge Kotlin** to analyze and modify memory in a sample target application.
 
-| Dashboard & Setup | Memory Scanner | Result Analysis | Overlay Monitor |
+### 1. System Initialization & Permissions
+Upon first launch, RootBridge will request the necessary permissions to operate.
+
+| Step 1: Initial Permissions | Step 2: Error Handling | Step 3: Dashboard Ready |
+|:---:|:---:|:---:|
+| <img src="docs/assets/01.png" width="200"/> | <img src="docs/assets/02.png" width="200"/> | <img src="docs/assets/03.png" width="200"/> |
+| Requesting Superuser and Overlay permissions. | Clear error feedback if permissions are denied. | Dashboard showing system status "Granted". |
+
+### 2. Launching the Overlay Engine
+Once the engine is started, a floating button appears, allowing you to access memory tools from any application.
+
+| Step 4: Floating Overlay |
+|:---:|
+| <img src="docs/assets/04.png" width="200"/> |
+| The "RB" overlay button is active on the home screen. |
+
+### 3. Scanning Memory
+Select your target process and perform an initial scan for a known value.
+
+| Step 5: Target & Scan | Step 6: Scan Progress | Step 7: Initial Results |
+|:---:|:---:|:---:|
+| <img src="docs/assets/05.png" width="200"/> | <img src="docs/assets/06.png" width="200"/> | <img src="docs/assets/07.png" width="200"/> |
+| Selecting "RootBridge Sample Target" and searching for `500`. | Real-time feedback of the memory regions being scanned. | Initial scan found 586 matching addresses. |
+
+### 4. Refining Results (Next Scan)
+Change the value in your target app and scan again to narrow down the exact memory address.
+
+| Step 8: Refine Search | Step 9: Isolated Address |
+|:---:|:---:|
+| <img src="docs/assets/08.png" width="200"/> | <img src="docs/assets/09.png" width="200"/> |
+| After changing value to `510` in-app, we perform a refinement scan. | Only 1 address matches both scans - we've found the pointer! |
+
+### 5. Modifying Memory Values
+Once the address is isolated, you can write new values directly into the target process's memory.
+
+| Step 10: Selection | Step 11: Write Value | Step 12: Confirmation | Step 13: Final Result |
 |:---:|:---:|:---:|:---:|
-| *(Pending)* | *(Pending)* | *(Pending)* | *(Pending)* |
-| Process selector and environment (Root/No-Root) status. | Type selection and parallel value search. | Discovered Hex addresses and live values. | Real-time tracking of isolated variables. |
+| <img src="docs/assets/10.png" width="160"/> | <img src="docs/assets/11.png" width="160"/> | <img src="docs/assets/12.png" width="160"/> | <img src="docs/assets/13.png" width="160"/> |
+| Selecting the specific address for modification. | Entering a new value (e.g., `999999`). | Value written successfully with Superuser privileges. | Target app reflects the change instantly! |
+
 
 ## 🏗 Architecture & Tech Stack
 
