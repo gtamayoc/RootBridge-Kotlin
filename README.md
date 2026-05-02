@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="https://raw.githubusercontent.com/gtamayoc/RootBridge-Kotlin/main/docs/assets/logo.png" alt="RootBridge-Kotlin Logo" width="200"/>
+  <img src="https://raw.githubusercontent.com/gtamayoc/RootBridge-Kotlin/refs/heads/REFACTOR/docs/assets/logo.png" alt="RootBridge-Kotlin Logo" width="200"/>
   <h1>RootBridge Kotlin</h1>
   <p><strong>Advanced Memory Diagnostic & Quality Assurance Tool for Android</strong></p>
 
