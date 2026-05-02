@@ -36,55 +36,48 @@ val Typography = Typography(
         fontWeight = FontWeight.Normal,
         fontSize = 16.sp,
         lineHeight = 24.sp,
-        letterSpacing = 0.5.sp,
-        color = TextPrimary
+        letterSpacing = 0.5.sp
     ),
     bodyMedium = TextStyle(
         fontFamily = InterFontFamily,
         fontWeight = FontWeight.Normal,
         fontSize = 14.sp,
         lineHeight = 20.sp,
-        letterSpacing = 0.25.sp,
-        color = TextPrimary
+        letterSpacing = 0.25.sp
     ),
     bodySmall = TextStyle(
         fontFamily = InterFontFamily,
         fontWeight = FontWeight.Normal,
         fontSize = 12.sp,
         lineHeight = 16.sp,
-        letterSpacing = 0.4.sp,
-        color = TextSecondary
+        letterSpacing = 0.4.sp
     ),
     titleLarge = TextStyle(
         fontFamily = InterFontFamily,
         fontWeight = FontWeight.SemiBold,
         fontSize = 22.sp,
         lineHeight = 28.sp,
-        letterSpacing = 0.sp,
-        color = TextPrimary
+        letterSpacing = 0.sp
     ),
     labelMedium = TextStyle(
         fontFamily = InterFontFamily,
         fontWeight = FontWeight.Medium,
         fontSize = 12.sp,
         lineHeight = 16.sp,
-        letterSpacing = 0.5.sp,
-        color = TextSecondary
+        letterSpacing = 0.5.sp
     ),
     labelSmall = TextStyle(
         fontFamily = JetBrainsMonoFontFamily, // Technical data labels
         fontWeight = FontWeight.Normal,
         fontSize = 11.sp,
         lineHeight = 16.sp,
-        letterSpacing = 0.5.sp,
-        color = TextSecondary
+        letterSpacing = 0.5.sp
     ),
     displaySmall = TextStyle(
         fontFamily = JetBrainsMonoFontFamily, // For Hex/Data values
         fontWeight = FontWeight.Normal,
         fontSize = 14.sp,
         lineHeight = 20.sp,
-        letterSpacing = 0.sp,
-        color = TextPrimary
+        letterSpacing = 0.sp
     )
 )

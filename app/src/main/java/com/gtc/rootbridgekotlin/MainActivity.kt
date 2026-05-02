@@ -10,7 +10,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import com.gtc.rootbridgekotlin.core.root.RootAccessState
 import com.gtc.rootbridgekotlin.overlay.OverlayPermissionManager
-import com.gtc.rootbridgekotlin.ui.theme.DeepVoid
 import com.gtc.rootbridgekotlin.ui.theme.RootBridgeKotlinTheme
 import com.gtc.rootbridgekotlin.ui.viewmodel.MainViewModel
 
@@ -30,7 +29,7 @@ class MainActivity : ComponentActivity() {
             RootBridgeKotlinTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = DeepVoid
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.background
                 ) {
                     AppNavHost(
                         viewModel = viewModel,

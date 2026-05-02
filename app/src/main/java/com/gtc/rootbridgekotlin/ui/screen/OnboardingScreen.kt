@@ -15,7 +15,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gtc.rootbridgekotlin.core.root.RootAccessState
-import com.gtc.rootbridgekotlin.ui.theme.*
 import com.gtc.rootbridgekotlin.ui.viewmodel.UiState
 
 @Composable
@@ -27,15 +26,15 @@ fun OnboardingScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(DeepVoid)
+            .background(MaterialTheme.colorScheme.background)
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
         Text(
             text = "SYSTEM INITIALIZATION",
-            style = Typography.titleLarge,
-            color = AccentPlasma,
+            style = MaterialTheme.typography.titleLarge,
+            color = MaterialTheme.colorScheme.primary,
             letterSpacing = 2.sp
         )
         
@@ -70,8 +69,8 @@ fun OnboardingScreen(
             Spacer(modifier = Modifier.height(24.dp))
             Text(
                 text = (state.rootState as RootAccessState.Denied).reason,
-                color = AccentError,
-                style = Typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
                 textAlign = TextAlign.Center
             )
         }
@@ -89,10 +88,10 @@ fun StatusNode(
     actionText: String
 ) {
     val color = when (state) {
-        NodeState.WAITING -> TextSecondary
-        NodeState.PROCESSING -> AccentSignal
-        NodeState.SUCCESS -> AccentPlasma
-        NodeState.FAILED -> AccentError
+        NodeState.WAITING -> MaterialTheme.colorScheme.onSurfaceVariant
+        NodeState.PROCESSING -> MaterialTheme.colorScheme.secondary
+        NodeState.SUCCESS -> MaterialTheme.colorScheme.primary
+        NodeState.FAILED -> MaterialTheme.colorScheme.error
     }
     
     Row(
@@ -111,27 +110,27 @@ fun StatusNode(
                     drawCircle(color = color, style = Stroke(width = 2.dp.toPx()))
                 }
             } else {
-                Text("✓", color = DeepVoid, style = Typography.labelMedium)
+                Text("✓", color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.labelMedium)
             }
         }
         
         Spacer(modifier = Modifier.width(16.dp))
         
         Column(modifier = Modifier.weight(1f)) {
-            Text(text = title, color = color, style = Typography.bodyLarge)
-            Text(text = description, color = TextSecondary, style = Typography.bodySmall)
+            Text(text = title, color = color, style = MaterialTheme.typography.bodyLarge)
+            Text(text = description, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
         }
         
         if (state == NodeState.FAILED || state == NodeState.WAITING) {
             Button(
                 onClick = onAction,
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = DeepElevated,
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
                     contentColor = color
                 ),
                 shape = CircleShape
             ) {
-                Text(actionText, style = Typography.labelMedium)
+                Text(actionText, style = MaterialTheme.typography.labelMedium)
             }
         }
     }
