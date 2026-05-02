@@ -8,8 +8,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 
 // ────────────────────────────────────────────────────────────────────────────
 // State definitions
@@ -92,11 +94,16 @@ class MemoryViewModel : ViewModel() {
             try {
                 Log.i(TAG, "scan() — pid=$pid value=$value type=$type")
 
-                val total = MemoryEngine.scanValue(pid, value, type) { scanned, total ->
-                    _scanState.value = ScanState.Scanning(
-                        pid = pid, value = value,
-                        regionsScanned = scanned, regionsTotal = total
-                    )
+                var lastEmitTime = 0L
+                val total = MemoryEngine.scanValue(pid, value, type) { scanned, totalRegions ->
+                    val now = System.currentTimeMillis()
+                    if (now - lastEmitTime > 50 || scanned == totalRegions) {
+                        lastEmitTime = now
+                        _scanState.value = ScanState.Scanning(
+                            pid = pid, value = value,
+                            regionsScanned = scanned, regionsTotal = totalRegions
+                        )
+                    }
                 }
 
                 when {
@@ -110,6 +117,7 @@ class MemoryViewModel : ViewModel() {
                     }
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 Log.e(TAG, "scan() — exception: ${e.message}", e)
                 _scanState.value = ScanState.Error(e.message ?: "Unknown scan error")
             }
@@ -131,6 +139,7 @@ class MemoryViewModel : ViewModel() {
                 val total = MemoryEngine.filterExact(pid, newValue, state.dataType)
                 handleFilterResult(total, pid, state.dataType, "refineExact($newValue)")
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 Log.e(TAG, "refineExact — ${e.message}", e)
                 _scanState.value = ScanState.Error(e.message ?: "Refine error")
             }
@@ -152,6 +161,7 @@ class MemoryViewModel : ViewModel() {
                 val total = MemoryEngine.filterChanged(pid)
                 handleFilterResult(total, pid, state.dataType, "refineChanged")
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 Log.e(TAG, "refineChanged — ${e.message}", e)
                 _scanState.value = ScanState.Error(e.message ?: "Filter error")
             }
@@ -173,6 +183,7 @@ class MemoryViewModel : ViewModel() {
                 val total = MemoryEngine.filterUnchanged(pid)
                 handleFilterResult(total, pid, state.dataType, "refineUnchanged")
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 Log.e(TAG, "refineUnchanged — ${e.message}", e)
                 _scanState.value = ScanState.Error(e.message ?: "Filter error")
             }
@@ -215,6 +226,7 @@ class MemoryViewModel : ViewModel() {
                     _writeState.value = WriteState.Idle
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 Log.e(TAG, "writeValue — ${e.message}", e)
                 _writeState.value = WriteState.Error(e.message ?: "Write error")
             }
@@ -245,6 +257,7 @@ class MemoryViewModel : ViewModel() {
                     _writeState.value = WriteState.Error("No addresses written")
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _writeState.value = WriteState.Error(e.message ?: "Unknown error")
             }
         }
@@ -256,7 +269,13 @@ class MemoryViewModel : ViewModel() {
         
         viewModelScope.launch(Dispatchers.IO) {
             val displayList = MemoryEngine.fetchResults(pid, state.dataType, DISPLAY_LIMIT)
-            _scanState.value = state.copy(results = displayList)
+            _scanState.update { currentState ->
+                if (currentState is ScanState.Results) {
+                    currentState.copy(results = displayList)
+                } else {
+                    currentState
+                }
+            }
         }
     }
 
@@ -294,7 +313,13 @@ class MemoryViewModel : ViewModel() {
                 val refreshed   = MemoryEngine.refreshAddresses(pid, topSlice)
                 val merged      = refreshed + state.results.drop(25)
 
-                _scanState.value = state.copy(results = merged)
+                _scanState.update { currentState ->
+                    if (currentState is ScanState.Results) {
+                        currentState.copy(results = merged)
+                    } else {
+                        currentState
+                    }
+                }
             }
         }
     }

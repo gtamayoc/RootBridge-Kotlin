@@ -1,5 +1,7 @@
 package com.gtc.rootbridgekotlin.core.memory
 
+import androidx.compose.runtime.Immutable
+
 enum class DataType(val byteSize: Int) {
     BYTE(1),
     WORD(2),
@@ -9,6 +11,7 @@ enum class DataType(val byteSize: Int) {
     DOUBLE(8)
 }
 
+@Immutable
 data class ScanResult(
     val address: Long,
     val currentValue: ByteArray,
