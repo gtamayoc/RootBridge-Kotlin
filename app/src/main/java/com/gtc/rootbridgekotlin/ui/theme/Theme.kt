@@ -76,7 +76,7 @@ private val DarkColors = darkColorScheme(
 @Composable
 fun RootBridgeKotlinTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = true,
+    dynamicColor: Boolean = false, // Force custom branding colors (disable Material You Monet)
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {
