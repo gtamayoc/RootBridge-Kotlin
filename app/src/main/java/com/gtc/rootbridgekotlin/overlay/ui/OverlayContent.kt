@@ -102,7 +102,7 @@ fun FloatingIcon(
     Box(
         modifier = Modifier
             .size(56.dp)
-            .background(DeepElevated, CircleShape)
+            .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape)
             .pointerInput(isInteractable) {
                 if (!isInteractable) return@pointerInput
                 detectTapGestures(
@@ -118,7 +118,7 @@ fun FloatingIcon(
             },
         contentAlignment = Alignment.Center
     ) {
-        Text("RB", style = Typography.titleMedium, color = AccentPlasma)
+        Text("RB", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
     }
 }
 
@@ -157,7 +157,7 @@ fun ExpandedMenu(
             .width(360.dp)
             .heightIn(max = 500.dp),
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = DeepElevated)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(
@@ -166,13 +166,13 @@ fun ExpandedMenu(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("Memory Engine", style = Typography.titleMedium, color = TextPrimary)
+                    Text("Memory Engine", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
                     if (isEditingPid) {
                         Spacer(modifier = Modifier.height(4.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Select Target Application", style = Typography.labelSmall, color = TextSecondary, modifier = Modifier.weight(1f))
+                            Text("Select Target Application", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
                             TextButton(onClick = { isEditingPid = false }) {
-                                Text("CANCEL", color = AccentError, style = Typography.labelSmall)
+                                Text("CANCEL", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
                             }
                         }
                     } else {
@@ -180,22 +180,22 @@ fun ExpandedMenu(
                             Text(
                                 if (currentPid > 0) "Target: $currentPackage (PID $currentPid)"
                                 else "⚠ No target — Click SELECT APP",
-                                style = Typography.labelSmall,
-                                color = if (currentPid > 0) AccentPlasma else AccentError,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (currentPid > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
                                 modifier = Modifier.weight(1f)
                             )
                             TextButton(onClick = { isEditingPid = true }) {
-                                Text("SELECT APP", color = AccentSignal, style = Typography.labelSmall)
+                                Text("SELECT APP", color = MaterialTheme.colorScheme.secondary, style = MaterialTheme.typography.labelSmall)
                             }
                         }
                     }
                 }
                 Row {
                     IconButton(onClick = onClose) {
-                        Text("-", color = TextSecondary, style = Typography.titleLarge)
+                        Text("-", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.titleLarge)
                     }
                     IconButton(onClick = onStopService) {
-                        Text("X", color = AccentError, style = Typography.titleLarge)
+                        Text("X", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.titleLarge)
                     }
                 }
             }
@@ -205,13 +205,13 @@ fun ExpandedMenu(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(AccentError.copy(alpha = 0.15f), RoundedCornerShape(6.dp))
+                        .background(MaterialTheme.colorScheme.error.copy(alpha = 0.15f), RoundedCornerShape(6.dp))
                         .padding(8.dp)
                 ) {
                     Text(
                         "PID sin detectar. Root activo y app en foreground son necesarios para escanear memoria real. Se usará PID=0 (modo demo).",
-                        style = Typography.labelSmall,
-                        color = AccentError
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error
                     )
                 }
             }
@@ -220,11 +220,11 @@ fun ExpandedMenu(
                 Spacer(modifier = Modifier.height(8.dp))
                 if (isLoadingApps) {
                     Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = AccentPlasma, modifier = Modifier.size(32.dp))
+                        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp))
                     }
                 } else if (runningApps.isEmpty()) {
                     Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        Text("No apps detected.", color = TextSecondary, style = Typography.labelSmall)
+                        Text("No apps detected.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
                     }
                 } else {
                     LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth()) {
@@ -232,25 +232,25 @@ fun ExpandedMenu(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .background(DeepSurface, RoundedCornerShape(8.dp))
+                                    .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(8.dp))
                                     .padding(12.dp)
                                     .padding(end = 8.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(app.packageName, style = Typography.labelSmall, color = TextPrimary)
-                                    Text("PID: ${app.pid}", style = Typography.bodySmall, color = TextSecondary)
+                                    Text(app.packageName, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface)
+                                    Text("PID: ${app.pid}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 Button(
                                     onClick = { 
                                         onOverrideTarget(app.pid, app.packageName)
                                         isEditingPid = false
                                     },
-                                    colors = ButtonDefaults.buttonColors(containerColor = AccentPlasma),
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                                 ) {
-                                    Text("HOOK", color = DeepVoid)
+                                    Text("HOOK", color = MaterialTheme.colorScheme.background)
                                 }
                             }
                             Spacer(modifier = Modifier.height(4.dp))
@@ -319,13 +319,13 @@ fun ScanningPanel(scanState: ScanState.Scanning, onCancel: () -> Unit) {
         ) {
             Text(
                 text = if (scanState.pid > 0) "PID ${scanState.pid}" else "Demo mode",
-                style = Typography.labelSmall,
-                color = AccentPlasma
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary
             )
             Text(
                 text = "Value: ${scanState.value}",
-                style = Typography.labelSmall,
-                color = TextSecondary
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
 
@@ -337,14 +337,14 @@ fun ScanningPanel(scanState: ScanState.Scanning, onCancel: () -> Unit) {
                 .fillMaxWidth()
                 .height(6.dp)
                 .clip(RoundedCornerShape(3.dp))
-                .background(DeepSurface)
+                .background(MaterialTheme.colorScheme.surface)
         ) {
             if (animatedProgress > 0f) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth(animatedProgress)
                         .fillMaxHeight()
-                        .background(AccentPlasma)
+                        .background(MaterialTheme.colorScheme.primary)
                 )
             } else {
                 // Indeterminate: full-width pulsing bar
@@ -352,7 +352,7 @@ fun ScanningPanel(scanState: ScanState.Scanning, onCancel: () -> Unit) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .fillMaxHeight()
-                        .background(AccentPlasma.copy(alpha = 0.4f))
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.4f))
                 )
             }
         }
@@ -366,8 +366,8 @@ fun ScanningPanel(scanState: ScanState.Scanning, onCancel: () -> Unit) {
             } else {
                 "Scanning memory regions…"
             },
-            style = Typography.labelSmall,
-            color = TextSecondary,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth()
         )
@@ -377,9 +377,9 @@ fun ScanningPanel(scanState: ScanState.Scanning, onCancel: () -> Unit) {
         OutlinedButton(
             onClick = onCancel,
             modifier = Modifier.fillMaxWidth(),
-            border = androidx.compose.foundation.BorderStroke(1.dp, AccentError.copy(alpha = 0.6f))
+            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.6f))
         ) {
-            Text("CANCEL", color = AccentError, style = Typography.labelMedium)
+            Text("CANCEL", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium)
         }
     }
 }
@@ -393,27 +393,27 @@ fun ErrorPanel(message: String, onRetry: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(AccentError.copy(alpha = 0.08f), RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.error.copy(alpha = 0.08f), RoundedCornerShape(8.dp))
             .padding(12.dp)
     ) {
         Text(
             text = "⚠ Scan failed",
-            style = Typography.labelMedium,
-            color = AccentError
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.error
         )
         Spacer(modifier = Modifier.height(4.dp))
         Text(
             text = message,
-            style = Typography.bodySmall,
-            color = TextSecondary
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(modifier = Modifier.height(12.dp))
         Button(
             onClick = onRetry,
             modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(containerColor = DeepSurface)
+            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surface)
         ) {
-            Text("NEW SCAN", color = AccentPlasma)
+            Text("NEW SCAN", color = MaterialTheme.colorScheme.primary)
         }
     }
 }
@@ -427,17 +427,17 @@ fun SearchPhase(pid: Int, onScan: (Int, String) -> Unit) {
         OutlinedTextField(
             value = query,
             onValueChange = { query = it },
-            placeholder = { Text("Enter value to search", color = TextSecondary) },
+            placeholder = { Text("Enter value to search", color = MaterialTheme.colorScheme.onSurfaceVariant) },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
             colors = TextFieldDefaults.colors(
-                focusedContainerColor = DeepSurface,
-                unfocusedContainerColor = DeepSurface,
-                focusedTextColor = TextPrimary,
-                unfocusedTextColor = TextPrimary,
-                cursorColor = AccentPlasma,
-                focusedIndicatorColor = AccentPlasma
+                focusedContainerColor = MaterialTheme.colorScheme.surface,
+                unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                cursorColor = MaterialTheme.colorScheme.primary,
+                focusedIndicatorColor = MaterialTheme.colorScheme.primary
             )
         )
         Spacer(modifier = Modifier.height(16.dp))
@@ -445,9 +445,9 @@ fun SearchPhase(pid: Int, onScan: (Int, String) -> Unit) {
             onClick = { onScan(pid, query) },
             enabled = query.trim().isNotEmpty(),
             modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(containerColor = AccentPlasma)
+            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
         ) {
-            Text(if (pid > 0) "SCAN (PID $pid)" else "SCAN (demo)", color = DeepVoid)
+            Text(if (pid > 0) "SCAN (PID $pid)" else "SCAN (demo)", color = MaterialTheme.colorScheme.background)
         }
     }
 }
@@ -487,21 +487,21 @@ fun ResultsPhase(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(AccentPlasma.copy(alpha = 0.12f), RoundedCornerShape(6.dp))
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f), RoundedCornerShape(6.dp))
                 .padding(horizontal = 10.dp, vertical = 6.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 text = "Total: $totalResults addresses",
-                style = Typography.labelMedium,
-                color = AccentPlasma
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary
             )
             if (results.size < totalResults) {
                 Text(
                     text = "Showing ${results.size}",
-                    style = Typography.labelSmall,
-                    color = TextSecondary
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
@@ -518,7 +518,7 @@ fun ResultsPhase(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(
-                            if (isSelected) AccentPlasma.copy(alpha = 0.15f)
+                            if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
                             else Color.Transparent,
                             RoundedCornerShape(6.dp)
                         )
@@ -529,13 +529,13 @@ fun ResultsPhase(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = "0x" + result.address.toString(16).uppercase(),
-                            style = Typography.bodySmall,
-                            color = TextPrimary
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
                             text = "Value: ${result.getIntValue()}",
-                            style = Typography.labelSmall,
-                            color = TextSecondary
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                     TextButton(onClick = {
@@ -549,8 +549,8 @@ fun ResultsPhase(
                     }) {
                         Text(
                             if (isSelected) "◄ BACK" else "EDIT",
-                            color = if (isSelected) AccentError else AccentSignal,
-                            style = Typography.labelSmall
+                            color = if (isSelected) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary,
+                            style = MaterialTheme.typography.labelSmall
                         )
                     }
                 }
@@ -567,7 +567,7 @@ fun ResultsPhase(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(DeepSurface, RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(8.dp))
                     .padding(12.dp)
             ) {
                 // Header with back button
@@ -578,14 +578,14 @@ fun ResultsPhase(
                 ) {
                     Text(
                         text = "✏  0x${selectedAddress!!.toString(16).uppercase()}",
-                        style = Typography.labelMedium,
-                        color = AccentSignal
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.secondary
                     )
                     TextButton(onClick = {
                         selectedAddress = null
                         editQuery = ""
                     }) {
-                        Text("◄ BACK", color = TextSecondary, style = Typography.labelSmall)
+                        Text("◄ BACK", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
                     }
                 }
                 Spacer(modifier = Modifier.height(8.dp))
@@ -593,17 +593,17 @@ fun ResultsPhase(
                     OutlinedTextField(
                         value = editQuery,
                         onValueChange = { editQuery = it },
-                        placeholder = { Text("New value", color = TextSecondary) },
+                        placeholder = { Text("New value", color = MaterialTheme.colorScheme.onSurfaceVariant) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
                         modifier = Modifier.weight(1f),
                         colors = TextFieldDefaults.colors(
-                            focusedContainerColor = DeepSurface,
-                            unfocusedContainerColor = DeepSurface,
-                            focusedTextColor = TextPrimary,
-                            unfocusedTextColor = TextPrimary,
-                            cursorColor = AccentSignal,
-                            focusedIndicatorColor = AccentSignal
+                            focusedContainerColor = MaterialTheme.colorScheme.surface,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                            focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                            unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                            cursorColor = MaterialTheme.colorScheme.secondary,
+                            focusedIndicatorColor = MaterialTheme.colorScheme.secondary
                         )
                     )
                     Spacer(modifier = Modifier.width(8.dp))
@@ -614,29 +614,29 @@ fun ResultsPhase(
                             }
                         },
                         enabled = editQuery.trim().isNotEmpty() && writeState !is WriteState.Writing,
-                        colors = ButtonDefaults.buttonColors(containerColor = AccentSignal)
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
                     ) {
                         if (writeState is WriteState.Writing)
                             CircularProgressIndicator(
                                 modifier = Modifier.size(16.dp),
-                                color = DeepVoid,
+                                color = MaterialTheme.colorScheme.background,
                                 strokeWidth = 2.dp
                             )
                         else
-                            Text("WRITE", color = DeepVoid)
+                            Text("WRITE", color = MaterialTheme.colorScheme.background)
                     }
                 }
                 Spacer(modifier = Modifier.height(4.dp))
                 when (writeState) {
                     is WriteState.Success -> Text(
                         "✓ Write successful",
-                        color = AccentSignal,
-                        style = Typography.labelSmall
+                        color = MaterialTheme.colorScheme.secondary,
+                        style = MaterialTheme.typography.labelSmall
                     )
                     is WriteState.Error -> Text(
                         "✗ ${writeState.msg}",
-                        color = AccentError,
-                        style = Typography.labelSmall
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.labelSmall
                     )
                     else -> {}
                 }
@@ -647,7 +647,7 @@ fun ResultsPhase(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(DeepSurface, RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(8.dp))
                     .padding(12.dp)
             ) {
                 Row(
@@ -657,11 +657,11 @@ fun ResultsPhase(
                 ) {
                     Text(
                         text = "🚀  Write All ($totalResults addresses)",
-                        style = Typography.labelMedium,
-                        color = AccentPlasma
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary
                     )
                     TextButton(onClick = { isWriteAllMode = false }) {
-                        Text("◄ BACK", color = TextSecondary, style = Typography.labelSmall)
+                        Text("◄ BACK", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
                     }
                 }
                 Spacer(modifier = Modifier.height(8.dp))
@@ -669,17 +669,17 @@ fun ResultsPhase(
                     OutlinedTextField(
                         value = writeAllQuery,
                         onValueChange = { writeAllQuery = it },
-                        placeholder = { Text("Value for ALL", color = TextSecondary) },
+                        placeholder = { Text("Value for ALL", color = MaterialTheme.colorScheme.onSurfaceVariant) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
                         modifier = Modifier.weight(1f),
                         colors = TextFieldDefaults.colors(
-                            focusedContainerColor = DeepSurface,
-                            unfocusedContainerColor = DeepSurface,
-                            focusedTextColor = TextPrimary,
-                            unfocusedTextColor = TextPrimary,
-                            cursorColor = AccentPlasma,
-                            focusedIndicatorColor = AccentPlasma
+                            focusedContainerColor = MaterialTheme.colorScheme.surface,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                            focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                            unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                            cursorColor = MaterialTheme.colorScheme.primary,
+                            focusedIndicatorColor = MaterialTheme.colorScheme.primary
                         )
                     )
                     Spacer(modifier = Modifier.width(8.dp))
@@ -691,16 +691,16 @@ fun ResultsPhase(
                             }
                         },
                         enabled = writeAllQuery.trim().isNotEmpty() && writeState !is WriteState.Writing,
-                        colors = ButtonDefaults.buttonColors(containerColor = AccentPlasma)
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                     ) {
                         if (writeState is WriteState.Writing)
                             CircularProgressIndicator(
                                 modifier = Modifier.size(16.dp),
-                                color = DeepVoid,
+                                color = MaterialTheme.colorScheme.background,
                                 strokeWidth = 2.dp
                             )
                         else
-                            Text("ALL", color = DeepVoid)
+                            Text("ALL", color = MaterialTheme.colorScheme.background)
                     }
                 }
             }
@@ -711,10 +711,10 @@ fun ResultsPhase(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(DeepSurface, RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(8.dp))
                     .padding(10.dp)
             ) {
-                Text("Refine Results", style = Typography.labelMedium, color = TextPrimary)
+                Text("Refine Results", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurface)
                 Spacer(modifier = Modifier.height(8.dp))
 
                 // Exact value filter
@@ -722,26 +722,26 @@ fun ResultsPhase(
                     OutlinedTextField(
                         value = exactQuery,
                         onValueChange = { exactQuery = it },
-                        placeholder = { Text("Filter by exact value…", color = TextSecondary) },
+                        placeholder = { Text("Filter by exact value…", color = MaterialTheme.colorScheme.onSurfaceVariant) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
                         modifier = Modifier.weight(1f),
                         colors = TextFieldDefaults.colors(
-                            focusedContainerColor = DeepSurface,
-                            unfocusedContainerColor = DeepSurface,
-                            focusedTextColor = TextPrimary,
-                            unfocusedTextColor = TextPrimary,
-                            cursorColor = AccentPlasma,
-                            focusedIndicatorColor = AccentPlasma
+                            focusedContainerColor = MaterialTheme.colorScheme.surface,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                            focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                            unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                            cursorColor = MaterialTheme.colorScheme.primary,
+                            focusedIndicatorColor = MaterialTheme.colorScheme.primary
                         )
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
                         onClick = { exactQuery.trim().toIntOrNull()?.let { onRefineExact(it) } },
                         enabled = exactQuery.trim().isNotEmpty(),
-                        colors = ButtonDefaults.buttonColors(containerColor = AccentPlasma)
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                     ) {
-                        Text("EXACT", color = DeepVoid, style = Typography.labelSmall)
+                        Text("EXACT", color = MaterialTheme.colorScheme.background, style = MaterialTheme.typography.labelSmall)
                     }
                 }
 
@@ -756,25 +756,25 @@ fun ResultsPhase(
                         onClick = onRefineChanged,
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = AccentSignal.copy(alpha = 0.85f)
+                            containerColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.85f)
                         )
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("CHANGED", color = DeepVoid, style = Typography.labelSmall)
-                            Text("values differ", color = DeepVoid.copy(alpha = 0.7f), style = Typography.labelSmall)
+                            Text("CHANGED", color = MaterialTheme.colorScheme.background, style = MaterialTheme.typography.labelSmall)
+                            Text("values differ", color = MaterialTheme.colorScheme.background.copy(alpha = 0.7f), style = MaterialTheme.typography.labelSmall)
                         }
                     }
                     Button(
                         onClick = onRefineUnchanged,
                         modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(containerColor = DeepElevated),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                         border = androidx.compose.foundation.BorderStroke(
-                            1.dp, TextSecondary.copy(alpha = 0.4f)
+                            1.dp, MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
                         )
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("UNCHANGED", color = TextPrimary, style = Typography.labelSmall)
-                            Text("values same", color = TextSecondary, style = Typography.labelSmall)
+                            Text("UNCHANGED", color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.labelSmall)
+                            Text("values same", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
                         }
                     }
                 }
@@ -785,17 +785,18 @@ fun ResultsPhase(
                 Button(
                     onClick = { isWriteAllMode = true },
                     modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = DeepElevated),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, AccentPlasma.copy(alpha = 0.5f))
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
                 ) {
-                    Text("BULK MODIFY ALL ($totalResults)", color = AccentPlasma, style = Typography.labelMedium)
+                    Text("BULK MODIFY ALL ($totalResults)", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
                 }
             }
         }
 
         Spacer(modifier = Modifier.height(8.dp))
         TextButton(onClick = onReset, modifier = Modifier.fillMaxWidth()) {
-            Text("NEW SCAN", color = TextSecondary, style = Typography.labelSmall)
+            Text("NEW SCAN", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
         }
     }
 }
+

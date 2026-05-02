@@ -9,7 +9,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.gtc.rootbridgekotlin.ui.theme.*
 import com.gtc.rootbridgekotlin.ui.viewmodel.UiState
 
 @Composable
@@ -19,13 +18,13 @@ fun DashboardScreen(
     onRefreshProcess: () -> Unit
 ) {
     Scaffold(
-        containerColor = DeepVoid,
+        containerColor = MaterialTheme.colorScheme.background,
         floatingActionButton = {
             ExtendedFloatingActionButton(
                 onClick = onStartOverlay,
-                containerColor = AccentPlasma,
-                contentColor = DeepVoid,
-                text = { Text("START ENGINE", style = Typography.labelMedium) },
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+                text = { Text("START ENGINE", style = MaterialTheme.typography.labelMedium) },
                 icon = { }
             )
         }
@@ -38,14 +37,16 @@ fun DashboardScreen(
         ) {
             Text(
                 text = "SYSTEM DASHBOARD",
-                style = Typography.titleLarge,
-                color = TextPrimary
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onBackground
             )
             Spacer(modifier = Modifier.height(24.dp))
             
             Card(
-                modifier = Modifier.fillMaxWidth().border(1.dp, BorderSubtle, RoundedCornerShape(12.dp)),
-                colors = CardDefaults.cardColors(containerColor = DeepSurface),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(12.dp)),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -54,38 +55,46 @@ fun DashboardScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("ACTIVE TARGET", color = TextSecondary, style = Typography.labelSmall)
+                        Text("ACTIVE TARGET", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
                         TextButton(onClick = onRefreshProcess) {
-                            Text("REFRESH", color = AccentSignal, style = Typography.labelSmall)
+                            Text("REFRESH", color = MaterialTheme.colorScheme.secondary, style = MaterialTheme.typography.labelSmall)
                         }
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     
                     if (state.isCheckingProcess) {
-                        Text("Detecting process...", color = TextPrimary)
+                        Text("Detecting process...", color = MaterialTheme.colorScheme.onSurface)
                     } else if (state.activeProcess != null) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(modifier = Modifier.size(12.dp).background(AccentPlasma, RoundedCornerShape(6.dp)))
+                            Box(
+                                modifier = Modifier
+                                    .size(12.dp)
+                                    .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(6.dp))
+                            )
                             Spacer(modifier = Modifier.width(12.dp))
                             Column {
-                                Text(state.activeProcess.packageName, color = TextPrimary, style = Typography.bodyLarge)
-                                Text("PID: ${state.activeProcess.pid}", color = AccentSignal, style = Typography.labelSmall)
+                                Text(state.activeProcess.packageName, color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodyLarge)
+                                Text("PID: ${state.activeProcess.pid}", color = MaterialTheme.colorScheme.secondary, style = MaterialTheme.typography.labelSmall)
                             }
                         }
                     } else {
-                        Text("No active foreground process detected", color = TextSecondary)
+                        Text("No active foreground process detected", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
             
             Spacer(modifier = Modifier.height(24.dp))
             
-            Text("ENGINE STATUS", color = TextSecondary, style = Typography.labelSmall)
+            Text("ENGINE STATUS", color = MaterialTheme.colorScheme.onBackground, style = MaterialTheme.typography.labelSmall)
             Spacer(modifier = Modifier.height(16.dp))
             
-            StatusRow("Root Access", "Granted", AccentPlasma)
+            StatusRow("Root Access", "Granted", MaterialTheme.colorScheme.primary)
             Spacer(modifier = Modifier.height(12.dp))
-            StatusRow("Overlay Permission", if (state.overlayGranted) "Granted" else "Missing", if (state.overlayGranted) AccentPlasma else AccentWarning)
+            StatusRow(
+                "Overlay Permission", 
+                if (state.overlayGranted) "Granted" else "Missing", 
+                if (state.overlayGranted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary
+            )
         }
     }
 }
@@ -93,10 +102,13 @@ fun DashboardScreen(
 @Composable
 fun StatusRow(label: String, value: String, valueColor: androidx.compose.ui.graphics.Color) {
     Row(
-        modifier = Modifier.fillMaxWidth().background(DeepSurface, RoundedCornerShape(8.dp)).padding(16.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp))
+            .padding(16.dp),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Text(label, color = TextPrimary)
-        Text(value, color = valueColor, style = Typography.labelSmall)
+        Text(label, color = MaterialTheme.colorScheme.onSurface)
+        Text(value, color = valueColor, style = MaterialTheme.typography.labelSmall)
     }
 }

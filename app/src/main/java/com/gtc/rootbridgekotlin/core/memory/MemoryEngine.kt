@@ -3,6 +3,8 @@ package com.gtc.rootbridgekotlin.core.memory
 import android.util.Log
 import com.gtc.rootbridgekotlin.core.root.RootShell
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.withContext
 
 object MemoryEngine {
@@ -193,12 +195,13 @@ object MemoryEngine {
         results: List<ScanResult>
     ): List<ScanResult> = withContext(Dispatchers.IO) {
         if (pid <= 0) return@withContext results
-        val refreshed = mutableListOf<ScanResult>()
-        for (sr in results) {
-            val liveBytes = readBytes(pid, sr.address, sr.dataType.byteSize)
-            refreshed.add(if (liveBytes != null) sr.copy(currentValue = liveBytes) else sr)
-        }
-        refreshed
+        
+        results.map { sr ->
+            async {
+                val liveBytes = readBytes(pid, sr.address, sr.dataType.byteSize)
+                if (liveBytes != null) sr.copy(currentValue = liveBytes) else sr
+            }
+        }.awaitAll()
     }
 
     // ────────────────────────────────────────────────────────────────────────
